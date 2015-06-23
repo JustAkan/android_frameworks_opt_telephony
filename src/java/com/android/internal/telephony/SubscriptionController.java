@@ -36,6 +36,7 @@ import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.SystemProperties;
 import android.os.UserHandle;
+import android.os.SystemProperties;
 import android.net.NetworkRequest;
 import android.preference.PreferenceManager;
 import android.provider.Settings.SettingNotFoundException;
@@ -60,6 +61,7 @@ import java.io.FileDescriptor;
 import java.io.PrintWriter;
 import java.lang.NumberFormatException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -819,7 +821,9 @@ public class SubscriptionController extends ISub.Stub {
                             if (DBG) {
                                 logdl("[addSubInfoRecord] one sim set defaults to subId=" + subId);
                             }
-                            setDefaultDataSubId(subId);
+                            if (!Arrays.asList("gee", "geehrc", "geefhd").contains(SystemProperties.get("ro.product.board"))) {
+                                setDefaultDataSubId(subId);
+                            }
                             setDataSubId(subId);
                             setDefaultSmsSubId(subId);
                             setDefaultVoiceSubId(subId);
