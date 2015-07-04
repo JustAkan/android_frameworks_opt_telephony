@@ -885,7 +885,7 @@ public class SmsMessage extends SmsMessageBase {
             String ret;
 
             try {
-                ret = new String(mPdu, mCur, byteCount, "KSC5601");
+                ret = new String(mPdu, mCur, byteCount, "EUC-KR");
             } catch (UnsupportedEncodingException ex) {
                 ret = "";
                 Rlog.e(LOG_TAG, "implausible UnsupportedEncodingException", ex);
@@ -1265,11 +1265,14 @@ public class SmsMessage extends SmsMessageBase {
                         break;
                     }
 
-                case 3: // reserved
                     Rlog.w(LOG_TAG, "1 - Unsupported SMS data coding scheme "
                             + (mDataCodingScheme & 0xff));
                     encodingType = ENCODING_8BIT;
                     break;
+
+	       case 3: // korean
+                   encodingType = ENCODING_KSC5601;
+		   break;
                 }
             }
         } else if ((mDataCodingScheme & 0xf0) == 0xf0) {
