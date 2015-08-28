@@ -1419,7 +1419,7 @@ public class SmsMessage extends SmsMessageBase {
 
         switch (encodingType) {
         case ENCODING_UNKNOWN:
-            mMessageBody = p.getUserDataKSC5601(count);
+            mMessageBody = null;
             break;
 
         case ENCODING_8BIT:
