@@ -43,10 +43,6 @@ public class PhoneSubInfoProxy extends IPhoneSubInfo.Stub {
         return mPhoneSubInfo.getImei();
     }
 
-    public String getNai() {
-        return mPhoneSubInfo.getNai();
-    }
-
     @Override
     public String getDeviceSvn() {
         return mPhoneSubInfo.getDeviceSvn();
@@ -152,79 +148,67 @@ public class PhoneSubInfoProxy extends IPhoneSubInfo.Stub {
     }
 
     @Override
-    public String getDeviceIdForPhone(int phoneId) throws RemoteException {
-        // FIXME: getDeviceIdForPhone
+    public String getDeviceIdForSubscriber(long subId) throws RemoteException {
+        // FIXME: getDeviceIdForSubscriber
         return null;
     }
 
     @Override
-    public String getImeiForSubscriber(int subId) throws RemoteException {
+    public String getImeiForSubscriber(long subId) throws RemoteException {
         // FIXME: getImeiForSubscriber
         return null;
     }
 
     @Override
-    public String getDeviceSvnUsingSubId(int subId) throws RemoteException {
-        // FIXME: getDeviceSvnUsingSubId
-        return null;
-    }
-
-    @Override
-    public String getNaiForSubscriber(int subId) throws RemoteException {
-        // FIXME: NaiForSubscriber
-        return null;
-    }
-
-    @Override
-    public String getSubscriberIdForSubscriber(int subId) throws RemoteException {
+    public String getSubscriberIdForSubscriber(long subId) throws RemoteException {
         // FIXME: getSubscriberIdForSubscriber
         return null;
     }
 
     @Override
-    public String getGroupIdLevel1ForSubscriber(int subId) throws RemoteException {
+    public String getGroupIdLevel1ForSubscriber(long subId) throws RemoteException {
         // FIXME: getGroupIdLevel1ForSubscriber
         return null;
     }
 
     @Override
-    public String getIccSerialNumberForSubscriber(int subId) throws RemoteException {
+    public String getIccSerialNumberForSubscriber(long subId) throws RemoteException {
         // FIXME: getIccSerialNumberForSubscriber
         return null;
     }
 
     @Override
-    public String getLine1NumberForSubscriber(int subId) throws RemoteException {
+    public String getLine1NumberForSubscriber(long subId) throws RemoteException {
         // FIXME: getLine1NumberForSubscriber
         return null;
     }
 
     @Override
-    public String getLine1AlphaTagForSubscriber(int subId) throws RemoteException {
+    public String getLine1AlphaTagForSubscriber(long subId) throws RemoteException {
         // FIXME: getLine1AlphaTagForSubscriber
         return null;
     }
 
     @Override
-    public String getMsisdnForSubscriber(int subId) throws RemoteException {
+    public String getMsisdnForSubscriber(long subId) throws RemoteException {
         // FIXME: getMsisdnForSubscriber
         return null;
     }
 
     @Override
-    public String getVoiceMailNumberForSubscriber(int subId) throws RemoteException {
+    public String getVoiceMailNumberForSubscriber(long subId) throws RemoteException {
         // FIXME: getVoiceMailNumberForSubscriber
         return null;
     }
 
     @Override
-    public String getCompleteVoiceMailNumberForSubscriber(int subId) throws RemoteException {
+    public String getCompleteVoiceMailNumberForSubscriber(long subId) throws RemoteException {
         // FIXME: getCompleteVoiceMailNumberForSubscriber
         return null;
     }
 
     @Override
-    public String getVoiceMailAlphaTagForSubscriber(int subId) throws RemoteException {
+    public String getVoiceMailAlphaTagForSubscriber(long subId) throws RemoteException {
         // FIXME: getVoiceMailAlphaTagForSubscriber
         return null;
     }
@@ -269,7 +253,7 @@ public class PhoneSubInfoProxy extends IPhoneSubInfo.Stub {
      * @param data authentication challenge data
      * @return challenge response
      */
-    public String getIccSimChallengeResponse(int subId, int appType, String data) {
+    public String getIccSimChallengeResponse(long subId, int appType, String data) {
         return mPhoneSubInfo.getIccSimChallengeResponse(subId, appType, data);
     }
 

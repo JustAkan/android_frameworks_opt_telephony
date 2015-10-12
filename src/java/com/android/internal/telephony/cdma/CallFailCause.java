@@ -60,9 +60,5 @@ public interface CallFailCause {
     // Access Blocked by CDMA Network.
     static final int CDMA_ACCESS_BLOCKED            = 1009;
 
-    //Emergency Redial
-    static final int EMERGENCY_TEMP_FAILURE = 325;
-    static final int EMERGENCY_PERM_FAILURE = 326;
-
     static final int ERROR_UNSPECIFIED = 0xffff;
 }

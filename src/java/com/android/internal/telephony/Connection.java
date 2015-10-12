@@ -35,7 +35,6 @@ import java.util.concurrent.CopyOnWriteArraySet;
 public abstract class Connection {
     public interface PostDialListener {
         void onPostDialWait();
-        //void onPostDialChar(char c);
     }
 
     /**
@@ -180,10 +179,6 @@ public abstract class Connection {
         return mConnectTime;
     }
 
-    public void setConnectTime(long oldConnectTime) {
-        mConnectTime = oldConnectTime;
-    }
-
     /**
      * Connection connect time in elapsedRealtime() format.
      * For outgoing calls: Begins at (DIALING|ALERTING) -> ACTIVE transition.
@@ -295,22 +290,6 @@ public abstract class Connection {
     }
 
     /**
-     * Get the details of conference participants. Expected to be
-     * overwritten by the Connection subclasses.
-     */
-    public List<ConferenceParticipant> getConferenceParticipants() {
-        Call c;
-
-        c = getCall();
-
-        if (c == null) {
-            return null;
-        } else {
-            return c.getConferenceParticipants();
-        }
-    }
-
-    /**
      * isAlive()
      *
      * @return true if the connection isn't disconnected
@@ -395,12 +374,6 @@ public abstract class Connection {
         }
     }
 
-    protected final void notifyPostDialListenersNextChar(char c) {
-        for (PostDialListener listener : new ArrayList<>(mPostDialListeners)) {
-            //listener.onPostDialChar(c);
-        }
-    }
-
     public abstract PostDialState getPostDialState();
 
     /**
@@ -438,13 +411,6 @@ public abstract class Connection {
     public abstract UUSInfo getUUSInfo();
 
     /**
-     * @return indication whether this connection is allowed to be merged into conference
-     */
-    public boolean isMergeAllowed() {
-        return true;
-    };
-
-    /**
      * Returns the CallFail reason provided by the RIL with the result of
      * RIL_REQUEST_LAST_CALL_FAIL_CAUSE
      */
@@ -468,7 +434,12 @@ public abstract class Connection {
     public void migrateFrom(Connection c) {
         if (c == null) return;
         mListeners = c.mListeners;
+        mAddress = c.getAddress();
+        mNumberPresentation = c.getNumberPresentation();
         mDialString = c.getOrigDialString();
+        mCnapName = c.getCnapName();
+        mCnapNamePresentation = c.getCnapNamePresentation();
+        mIsIncoming = c.isIncoming();
         mCreateTime = c.getCreateTime();
         mConnectTime = c.getConnectTime();
         mConnectTimeReal = c.getConnectTimeReal();

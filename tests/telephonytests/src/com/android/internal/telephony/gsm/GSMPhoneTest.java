@@ -19,7 +19,6 @@ package com.android.internal.telephony.gsm;
 import android.os.AsyncResult;
 import android.os.Handler;
 import android.os.Message;
-import android.telecom.VideoProfile;
 import android.telephony.ServiceState;
 import android.test.AndroidTestCase;
 import android.test.PerformanceTestCase;
@@ -159,7 +158,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
 
         mRadioControl.setAutoProgressConnectingCall(false);
 
-        mGSMPhone.dial("+13125551212", VideoProfile.VideoState.AUDIO_ONLY);
+        mGSMPhone.dial("+13125551212");
 
         assertEquals(PhoneConstants.State.OFFHOOK, mGSMPhone.getState());
 
@@ -335,7 +334,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
         assertFalse(mGSMPhone.canConference());
 
         // One mobile terminated active call
-        mGSMPhone.acceptCall(VideoProfile.VideoState.AUDIO_ONLY);
+        mGSMPhone.acceptCall();
 
         do {
             assertNotNull("Message Time Out", mGSMTestHandler.waitForMessage(ANY_MESSAGE));
@@ -545,7 +544,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
         cn = mGSMPhone.getRingingCall().getEarliestConnection();
 
         // One answered call
-        mGSMPhone.acceptCall(VideoProfile.VideoState.AUDIO_ONLY);
+        mGSMPhone.acceptCall();
 
         do {
             assertNotNull("Message Time Out", mGSMTestHandler.waitForMessage(ANY_MESSAGE));
@@ -618,7 +617,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
 
         cn = mGSMPhone.getRingingCall().getEarliestConnection();
 
-        mGSMPhone.acceptCall(VideoProfile.VideoState.AUDIO_ONLY);
+        mGSMPhone.acceptCall();
 
         do {
             assertNotNull("Message Time Out", mGSMTestHandler.waitForMessage(ANY_MESSAGE));
@@ -647,7 +646,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
         //
 
         // One ALERTING call
-        mGSMPhone.dial("+13125551212", VideoProfile.VideoState.AUDIO_ONLY);
+        mGSMPhone.dial("+13125551212");
 
         do {
             assertNotNull("Message Time Out", mGSMTestHandler.waitForMessage(ANY_MESSAGE));
@@ -678,7 +677,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
         assertTrue(mGSMPhone.getRingingCall().isRinging());
 
         // One HOLDING call, one ACTIVE call
-        mGSMPhone.acceptCall(VideoProfile.VideoState.AUDIO_ONLY);
+        mGSMPhone.acceptCall();
 
         do {
             assertNotNull("Message Time Out", mGSMTestHandler.waitForMessage(ANY_MESSAGE));
@@ -769,7 +768,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
         // ForegroundCall list as an IDLE call
         mRadioControl.setNextDialFailImmediately(true);
 
-        Connection cn = mGSMPhone.dial("+13125551212", VideoProfile.VideoState.AUDIO_ONLY);
+        Connection cn = mGSMPhone.dial("+13125551212");
 
         msg = mGSMTestHandler.waitForMessage(EVENT_DISCONNECT);
         assertNotNull("Message Time Out", msg);
@@ -796,7 +795,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
         mRadioControl.setAutoProgressConnectingCall(false);
 
         // Test 1: local hangup in "DIALING" state
-        mGSMPhone.dial("+13125551212", VideoProfile.VideoState.AUDIO_ONLY);
+        mGSMPhone.dial("+13125551212");
 
         do {
             assertNotNull("Message Time Out", mGSMTestHandler.waitForMessage(ANY_MESSAGE));
@@ -815,7 +814,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
         assertEquals(DisconnectCause.LOCAL, cn.getDisconnectCause());
 
         // Test 2: local hangup in "ALERTING" state
-        mGSMPhone.dial("+13125551212", VideoProfile.VideoState.AUDIO_ONLY);
+        mGSMPhone.dial("+13125551212");
 
         do {
             assertNotNull("Message Time Out", mGSMTestHandler.waitForMessage(ANY_MESSAGE));
@@ -845,7 +844,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
 
         mRadioControl.pauseResponses();
 
-        cn = mGSMPhone.dial("+13125551212", VideoProfile.VideoState.AUDIO_ONLY);
+        cn = mGSMPhone.dial("+13125551212");
 
         cn.hangup();
 
@@ -862,7 +861,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
     }
 
     public void testHangupOnChannelClose() throws Exception {
-        mGSMPhone.dial("+13125551212", VideoProfile.VideoState.AUDIO_ONLY);
+        mGSMPhone.dial("+13125551212");
 
         do {
             assertNotNull("Message Time Out", mGSMTestHandler.waitForMessage(ANY_MESSAGE));
@@ -880,7 +879,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
         Message msg;
 
         // establish an active call
-        mGSMPhone.dial("+13125551212", VideoProfile.VideoState.AUDIO_ONLY);
+        mGSMPhone.dial("+13125551212");
 
         do {
             mRadioControl.progressConnectingCallState();
@@ -945,7 +944,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
         Message msg;
 
         // establish an active call
-        mGSMPhone.dial("+13125551212", VideoProfile.VideoState.AUDIO_ONLY);
+        mGSMPhone.dial("+13125551212");
 
         do {
             mRadioControl.progressConnectingCallState();
@@ -1038,7 +1037,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
         assertEquals(Call.State.DISCONNECTED, mGSMPhone.getForegroundCall().getState());
         assertEquals(Call.State.IDLE, mGSMPhone.getBackgroundCall().getState());
 
-        mGSMPhone.acceptCall(VideoProfile.VideoState.AUDIO_ONLY);
+        mGSMPhone.acceptCall();
 
         do {
             assertNotNull("Message Time Out", mGSMTestHandler.waitForMessage(ANY_MESSAGE));
@@ -1052,7 +1051,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
 
         // at this point, the call with number==16505550100 should
         // have the gsm index of 1
-        mGSMPhone.dial("+13125551212", VideoProfile.VideoState.AUDIO_ONLY);
+        mGSMPhone.dial("+13125551212");
 
         do {
             mRadioControl.progressConnectingCallState();
@@ -1116,7 +1115,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
         Message msg;
 
         // establish an active call
-        mGSMPhone.dial("13125551212", VideoProfile.VideoState.AUDIO_ONLY);
+        mGSMPhone.dial("13125551212");
 
         do {
             mRadioControl.progressConnectingCallState();
@@ -1216,7 +1215,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
 
     public void testIncallMmiMultipartyServices() throws Exception {
         // establish an active call
-        mGSMPhone.dial("13125551212", VideoProfile.VideoState.AUDIO_ONLY);
+        mGSMPhone.dial("13125551212");
 
         do {
             mRadioControl.progressConnectingCallState();
@@ -1227,7 +1226,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
         assertEquals(Call.State.IDLE, mGSMPhone.getBackgroundCall().getState());
 
         // dial another call
-        mGSMPhone.dial("18005551212", VideoProfile.VideoState.AUDIO_ONLY);
+        mGSMPhone.dial("18005551212");
 
         do {
             mRadioControl.progressConnectingCallState();
@@ -1256,7 +1255,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
         Message msg;
 
         // establish the first call
-        mGSMPhone.dial("16505550100", VideoProfile.VideoState.AUDIO_ONLY);
+        mGSMPhone.dial("16505550100");
 
         do {
             mRadioControl.progressConnectingCallState();
@@ -1271,7 +1270,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
         for (int i = 1; i < 6; i++) {
             String number = baseNumber + i;
 
-            mGSMPhone.dial(number, VideoProfile.VideoState.AUDIO_ONLY);
+            mGSMPhone.dial(number);
 
             do {
                 mRadioControl.progressConnectingCallState();
@@ -1315,7 +1314,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
 
         // hangup the background call and accept the ringing call
         mGSMPhone.getBackgroundCall().hangup();
-        mGSMPhone.acceptCall(VideoProfile.VideoState.AUDIO_ONLY);
+        mGSMPhone.acceptCall();
 
         do {
             assertNotNull("Message Time Out", mGSMTestHandler.waitForMessage(ANY_MESSAGE));
@@ -1364,7 +1363,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
         AsyncResult ar;
         Connection cn;
 
-        mGSMPhone.dial("+13125551212,1234;5N8xx", VideoProfile.VideoState.AUDIO_ONLY);
+        mGSMPhone.dial("+13125551212,1234;5N8xx");
 
         msg = mGSMTestHandler.waitForMessage(EVENT_POST_DIAL);
         assertNotNull("Message Time Out", msg);
@@ -1478,7 +1477,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
         AsyncResult ar;
         Connection cn;
 
-        mGSMPhone.dial("+13125551212,N", VideoProfile.VideoState.AUDIO_ONLY);
+        mGSMPhone.dial("+13125551212,N");
         mRadioControl.progressConnectingToActive();
 
         mRadioControl.progressConnectingToActive();
@@ -1506,7 +1505,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
         mRadioControl.setNextCallFailCause(CallFailCause.NORMAL_CLEARING);
         mRadioControl.setAutoProgressConnectingCall(false);
 
-        Connection cn = mGSMPhone.dial("+13125551212", VideoProfile.VideoState.AUDIO_ONLY);
+        Connection cn = mGSMPhone.dial("+13125551212");
 
         mRadioControl.progressConnectingCallState();
 
@@ -1544,7 +1543,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
         mRadioControl.setNextCallFailCause(CallFailCause.USER_BUSY);
         mRadioControl.setAutoProgressConnectingCall(false);
 
-        cn = mGSMPhone.dial("+13125551212", VideoProfile.VideoState.AUDIO_ONLY);
+        cn = mGSMPhone.dial("+13125551212");
 
         mRadioControl.progressConnectingCallState();
 
@@ -1583,7 +1582,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
         mRadioControl.setNextCallFailCause(CallFailCause.NO_CIRCUIT_AVAIL);
         mRadioControl.setAutoProgressConnectingCall(false);
 
-        cn = mGSMPhone.dial("+13125551212", VideoProfile.VideoState.AUDIO_ONLY);
+        cn = mGSMPhone.dial("+13125551212");
 
         mRadioControl.progressConnectingCallState();
 
@@ -1737,7 +1736,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
         AsyncResult ar;
         MmiCode mmi;
 
-        mGSMPhone.dial("#646#", VideoProfile.VideoState.AUDIO_ONLY);
+        mGSMPhone.dial("#646#");
 
         msg = mGSMTestHandler.waitForMessage(EVENT_MMI_INITIATE);
         assertNotNull("Message Time Out", msg);
@@ -1761,7 +1760,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
          */
         Message msg;
 
-        mGSMPhone.dial("#646#", VideoProfile.VideoState.AUDIO_ONLY);
+        mGSMPhone.dial("#646#");
 
         List<? extends MmiCode> pendingMmis = mGSMPhone.getPendingMmiCodes();
 
@@ -1895,7 +1894,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
     }
 
     private void runValidMmi(String dialString, boolean cancelable) throws CallStateException {
-        Connection c = mGSMPhone.dial(dialString, VideoProfile.VideoState.AUDIO_ONLY);
+        Connection c = mGSMPhone.dial(dialString);
         assertNull(c);
         Message msg = mGSMTestHandler.waitForMessage(EVENT_MMI_INITIATE);
         assertNotNull("Message Time Out", msg);
@@ -1911,7 +1910,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
     private void runValidMmiWithConnect(String dialString) throws CallStateException {
         mRadioControl.pauseResponses();
 
-        Connection c = mGSMPhone.dial(dialString, VideoProfile.VideoState.AUDIO_ONLY);
+        Connection c = mGSMPhone.dial(dialString);
         assertNotNull(c);
 
         hangup(c);
@@ -1928,7 +1927,7 @@ public class GSMPhoneTest extends AndroidTestCase implements PerformanceTestCase
     private void runNotMmi(String dialString) throws CallStateException {
         mRadioControl.pauseResponses();
 
-        Connection c = mGSMPhone.dial(dialString, VideoProfile.VideoState.AUDIO_ONLY);
+        Connection c = mGSMPhone.dial(dialString);
         assertNotNull(c);
 
         hangup(c);

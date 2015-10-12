@@ -989,7 +989,7 @@ public final class ImsPhoneMmiCode extends Handler implements MmiCode {
                     if (isInterrogate()) {
                         mPhone.mCT.getUtInterface()
                         .queryCallBarring(ImsUtInterface.CB_BIC_ACR,
-                                          obtainMessage(EVENT_QUERY_ICB_COMPLETE,this));
+                                          obtainMessage(EVENT_SUPP_SVC_QUERY_COMPLETE,this));
                     } else {
                         if (isActivate()) {
                             callAction = CommandsInterface.CF_ACTION_ENABLE;
@@ -1110,12 +1110,10 @@ public final class ImsPhoneMmiCode extends Handler implements MmiCode {
                     boolean cffEnabled = (msg.arg2 == 1);
                     if (mIccRecords != null) {
                         mIccRecords.setVoiceCallForwardingFlag(1, cffEnabled, mDialingNumber);
-                        mPhone.setCallForwardingPreference(cffEnabled);
                     }
                 }
 
                 onSetComplete(msg, ar);
-                mPhone.updateCallForwardStatus();
                 break;
 
             case EVENT_SET_CFF_TIMER_COMPLETE:
@@ -1375,8 +1373,6 @@ public final class ImsPhoneMmiCode extends Handler implements MmiCode {
             boolean cffEnabled = (info.status == 1);
             if (mIccRecords != null) {
                 mIccRecords.setVoiceCallForwardingFlag(1, cffEnabled, info.number);
-                Rlog.d(LOG_TAG, "makeCFQueryResultMessage cffEnabled  = "+cffEnabled);
-                mPhone.setCallForwardingPreference(cffEnabled);
             }
         }
 
@@ -1414,7 +1410,6 @@ public final class ImsPhoneMmiCode extends Handler implements MmiCode {
 
                 // Set unconditional CFF in SIM to false
                 if (mIccRecords != null) {
-                    mPhone.setCallForwardingPreference(false);
                     mIccRecords.setVoiceCallForwardingFlag(1, false, null);
                 }
             } else {
@@ -1560,13 +1555,19 @@ public final class ImsPhoneMmiCode extends Handler implements MmiCode {
             } else {
                 Rlog.d(LOG_TAG, "Received Call Barring Response.");
                 // Response for Call Barring queries.
-                int[] cbInfos = (int[]) ar.result;
-                if (cbInfos[0] == 1) {
-                    sb.append(mContext.getText(com.android.internal.R.string.serviceEnabled));
-                    mState = State.COMPLETE;
-                } else {
-                    sb.append(mContext.getText(com.android.internal.R.string.serviceDisabled));
-                    mState = State.COMPLETE;
+                ImsSsInfo[] arr = (ImsSsInfo[])ar.result;
+                // Check if ImsPhone has received call barring
+                // enabled for service class voice.
+                for (int i = 0, s = arr.length; i < s ; i++) {
+                    if(arr[i].mStatus == 1) {
+                        sb.append(mContext.getText(com.android.internal
+                                .R.string.serviceEnabled));
+                        mState = State.COMPLETE;
+                    } else {
+                        sb.append(mContext.getText(com.android.internal
+                                .R.string.serviceDisabled));
+                        mState = State.COMPLETE;
+                    }
                 }
             }
         }
@@ -1594,24 +1595,18 @@ public final class ImsPhoneMmiCode extends Handler implements MmiCode {
                 sb.append(getErrorMessage(ar));
             }
         } else {
+            mState = State.FAILED;
             ImsSsInfo[] infos = (ImsSsInfo[])ar.result;
             if (infos.length == 0) {
                 sb.append(mContext.getText(com.android.internal.R.string.serviceDisabled));
+                mState = State.COMPLETE;
             } else {
                 for (int i = 0, s = infos.length; i < s ; i++) {
-                    if (infos[i].mIcbNum !=null) {
-                        sb.append("Num: " + infos[i].mIcbNum + " status: "
-                                + infos[i].mStatus + "\n");
-                    } else if (infos[i].mStatus == 1) {
-                        sb.append(mContext.getText(com.android.internal
-                                .R.string.serviceEnabled));
-                    } else {
-                        sb.append(mContext.getText(com.android.internal
-                                .R.string.serviceDisabled));
-                    }
+                    sb.append("Num: " + infos[i].mIcbNum + " status: "
+                            + infos[i].mStatus + "\n");
                 }
+                mState = State.COMPLETE;
             }
-            mState = State.COMPLETE;
         }
         mMessage = sb;
         mPhone.onMMIDone(this);

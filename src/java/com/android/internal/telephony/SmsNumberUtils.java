@@ -543,7 +543,7 @@ public class SmsNumberUtils {
 
         if (needToConvert(phoneBase)) {
             final int networkType = getNetworkType(phoneBase);
-            if (networkType != -1 && !TextUtils.isEmpty(networkOperator)) {
+            if (networkType != -1) {
                 String networkMcc = networkOperator.substring(0, 3);
                 if (networkMcc != null && networkMcc.trim().length() > 0) {
                     result = formatNumber(phoneBase.getContext(), destAddr, networkMcc, networkType);

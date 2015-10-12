@@ -33,6 +33,7 @@ import android.content.Context;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Message;
+
 import android.telephony.Rlog;
 import android.telephony.ServiceState;
 import android.telephony.SubscriptionManager;
@@ -45,16 +46,13 @@ import com.android.internal.telephony.PhoneProxy;
 import com.android.internal.telephony.dataconnection.DctController;
 import com.android.internal.telephony.uicc.UiccController;
 
-import java.io.FileDescriptor;
-import java.io.PrintWriter;
-
 public class ProxyController {
     static final String LOG_TAG = "ProxyController";
 
     //***** Class Variables
     private static ProxyController sProxyController;
 
-    private PhoneProxy[] mProxyPhones;
+    private Phone[] mProxyPhones;
 
     private UiccController mUiccController;
 
@@ -62,7 +60,7 @@ public class ProxyController {
 
     private Context mContext;
 
-    private DctController mDctController;
+    private static DctController mDctController;
 
     //UiccPhoneBookController to use proper IccPhoneBookInterfaceManagerProxy object
     private UiccPhoneBookController mUiccPhoneBookController;
@@ -73,8 +71,10 @@ public class ProxyController {
     //UiccSmsController to use proper IccSmsInterfaceManager object
     private UiccSmsController mUiccSmsController;
 
+  //  private SubscriptionManager mSubscriptionManager;
+
     //***** Class Methods
-    public static ProxyController getInstance(Context context, PhoneProxy[] phoneProxy,
+    public static ProxyController getInstance(Context context, Phone[] phoneProxy,
             UiccController uiccController, CommandsInterface[] ci) {
         if (sProxyController == null) {
             sProxyController = new ProxyController(context, phoneProxy, uiccController, ci);
@@ -86,7 +86,7 @@ public class ProxyController {
         return sProxyController;
     }
 
-    private ProxyController(Context context, PhoneProxy[] phoneProxy, UiccController uiccController,
+    private ProxyController(Context context, Phone[] phoneProxy, UiccController uiccController,
             CommandsInterface[] ci) {
         logd("Constructor - Enter");
 
@@ -102,28 +102,29 @@ public class ProxyController {
         mUiccPhoneBookController = new UiccPhoneBookController(mProxyPhones);
         mPhoneSubInfoController = new PhoneSubInfoController(mProxyPhones);
         mUiccSmsController = new UiccSmsController(mProxyPhones, context);
+       // mSubscriptionManager = SubscriptionManager.getInstance(context, uiccController, ci);
 
         logd("Constructor - Exit");
     }
 
     public void updateDataConnectionTracker(int sub) {
-        mProxyPhones[sub].updateDataConnectionTracker();
+        ((PhoneProxy) mProxyPhones[sub]).updateDataConnectionTracker();
     }
 
     public void enableDataConnectivity(int sub) {
-        mProxyPhones[sub].setInternalDataEnabled(true);
+        ((PhoneProxy) mProxyPhones[sub]).setInternalDataEnabled(true);
     }
 
     public void disableDataConnectivity(int sub,
             Message dataCleanedUpMsg) {
-        mProxyPhones[sub].setInternalDataEnabled(false, dataCleanedUpMsg);
+        ((PhoneProxy) mProxyPhones[sub]).setInternalDataEnabled(false, dataCleanedUpMsg);
     }
 
     public void updateCurrentCarrierInProvider(int sub) {
-        mProxyPhones[sub].updateCurrentCarrierInProvider();
+        ((PhoneProxy) mProxyPhones[sub]).updateCurrentCarrierInProvider();
     }
 
-    public void registerForAllDataDisconnected(int subId, Handler h, int what, Object obj) {
+    public void registerForAllDataDisconnected(long subId, Handler h, int what, Object obj) {
         int phoneId = SubscriptionController.getInstance().getPhoneId(subId);
 
         if (phoneId >= 0 && phoneId < TelephonyManager.getDefault().getPhoneCount()) {
@@ -131,7 +132,7 @@ public class ProxyController {
         }
     }
 
-    public void unregisterForAllDataDisconnected(int subId, Handler h) {
+    public void unregisterForAllDataDisconnected(long subId, Handler h) {
         int phoneId = SubscriptionController.getInstance().getPhoneId(subId);
 
         if (phoneId >= 0 && phoneId < TelephonyManager.getDefault().getPhoneCount()) {
@@ -139,7 +140,7 @@ public class ProxyController {
         }
     }
 
-    public boolean isDataDisconnected(int subId) {
+    public boolean isDataDisconnected(long subId) {
         int phoneId = SubscriptionController.getInstance().getPhoneId(subId);
 
         if (phoneId >= 0 && phoneId < TelephonyManager.getDefault().getPhoneCount()) {
@@ -152,13 +153,5 @@ public class ProxyController {
 
     private void logd(String string) {
         Rlog.d(LOG_TAG, string);
-    }
-
-    public void dump(FileDescriptor fd, PrintWriter pw, String[] args) {
-        try {
-            mDctController.dump(fd, pw, args);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
     }
 }

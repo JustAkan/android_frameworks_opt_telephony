@@ -278,8 +278,7 @@ public final class AdnRecordCache extends Handler implements IccConstants {
         }
 
         if (efid == EF_PBR) {
-            updateEmailAndAnr(efid, mUsimPhoneBookManager.getPBPath(efid),
-                    oldAdn, newAdn, index, pin2, response);
+            updateEmailAndAnr(efid, oldAdn, newAdn, index, pin2, response);
         } else {
             mUserWriteResponse.put(efid, response);
             new AdnRecordLoader(mFh).updateEF(newAdn, efid, extensionEF,
@@ -294,7 +293,7 @@ public final class AdnRecordCache extends Handler implements IccConstants {
      * record
      */
     public void
-    requestLoadAllAdnLike (int efid, int extensionEf, String path, Message response) {
+    requestLoadAllAdnLike (int efid, int extensionEf, Message response) {
         ArrayList<Message> waiters;
         ArrayList<AdnRecord> result;
 
@@ -346,8 +345,8 @@ public final class AdnRecordCache extends Handler implements IccConstants {
             return;
         }
 
-        new AdnRecordLoader(mFh).loadAllFromEF(efid, extensionEf, path,
-                obtainMessage(EVENT_LOAD_ALL_ADN_LIKE_DONE, efid, 0));
+        new AdnRecordLoader(mFh).loadAllFromEF(efid, extensionEf,
+            obtainMessage(EVENT_LOAD_ALL_ADN_LIKE_DONE, efid, 0));
     }
 
     //***** Private methods
@@ -422,8 +421,8 @@ public final class AdnRecordCache extends Handler implements IccConstants {
 
     }
 
-    private void updateEmailAndAnr(int efid, String path, AdnRecord oldAdn,
-            AdnRecord newAdn, int index, String pin2, Message response) {
+    private void updateEmailAndAnr(int efid, AdnRecord oldAdn, AdnRecord newAdn, int index,
+            String pin2, Message response) {
         int extensionEF;
         extensionEF = extensionEfForEf(newAdn.mEfid);
         boolean success = false;
@@ -438,7 +437,7 @@ public final class AdnRecordCache extends Handler implements IccConstants {
         if (success) {
             mUserWriteResponse.put(efid, response);
             new AdnRecordLoader(mFh).updateEF(newAdn, newAdn.mEfid, extensionEF,
-                    path, newAdn.mRecordNumber, pin2,
+                    newAdn.mRecordNumber, pin2,
                     obtainMessage(EVENT_UPDATE_ADN_DONE, efid, index, newAdn));
         } else {
             sendErrorResponse(response, "update anr failed");
@@ -577,8 +576,7 @@ public final class AdnRecordCache extends Handler implements IccConstants {
         }
 
         if (efid == EF_PBR) {
-            updateEmailAndAnr(efid, mUsimPhoneBookManager.getPBPath(efid),
-                    oldAdnList.get(index - 1), newAdn, index, pin2, response);
+            updateEmailAndAnr(efid, oldAdnList.get(index - 1), newAdn, index, pin2, response);
         } else {
             mUserWriteResponse.put(efid, response);
             new AdnRecordLoader(mFh).updateEF(newAdn, efid, extensionEF, index, pin2,

@@ -17,8 +17,10 @@
 package com.android.internal.telephony.gsm;
 
 import android.app.Activity;
+import android.app.AppOpsManager;
 import android.app.PendingIntent;
 import android.app.PendingIntent.CanceledException;
+import android.content.BroadcastReceiver;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.AsyncResult;
@@ -33,6 +35,7 @@ import com.android.internal.telephony.ImsSMSDispatcher;
 import com.android.internal.telephony.InboundSmsHandler;
 import com.android.internal.telephony.PhoneBase;
 import com.android.internal.telephony.SMSDispatcher;
+import com.android.internal.telephony.SmsApplication;
 import com.android.internal.telephony.SmsConstants;
 import com.android.internal.telephony.SmsHeader;
 import com.android.internal.telephony.SmsUsageMonitor;
@@ -169,18 +172,8 @@ public final class GsmSMSDispatcher extends SMSDispatcher {
         if (pdu != null) {
             HashMap map = getSmsTrackerMap(destAddr, scAddr, destPort, origPort, data, pdu);
             SmsTracker tracker = getSmsTracker(map, sentIntent, deliveryIntent, getFormat(),
-                    null /*messageUri*/, false /*isExpectMore*/, null /*fullMessageText*/,
-                    false /*isText*/);
-
-            String carrierPackage = getCarrierAppPackageName();
-            if (carrierPackage != null) {
-                Rlog.d(TAG, "Found carrier package.");
-                DataSmsSender smsSender = new DataSmsSender(tracker);
-                smsSender.sendSmsByCarrierApp(carrierPackage, new SmsSenderCallback(smsSender));
-            } else {
-                Rlog.v(TAG, "No carrier package.");
-                sendRawPdu(tracker);
-            }
+                    null /*messageUri*/, false);
+            sendRawPdu(tracker);
         } else {
             Rlog.e(TAG, "GsmSMSDispatcher.sendData(): getSubmitPdu() returned null");
         }
@@ -194,20 +187,22 @@ public final class GsmSMSDispatcher extends SMSDispatcher {
         SmsMessage.SubmitPdu pdu = SmsMessage.getSubmitPdu(
                 scAddr, destAddr, text, (deliveryIntent != null), validityPeriod);
         if (pdu != null) {
+            if (messageUri == null) {
+                if (SmsApplication.shouldWriteMessageForPackage(callingPkg, mContext)) {
+                    messageUri = writeOutboxMessage(
+                            getSubId(),
+                            destAddr,
+                            text,
+                            deliveryIntent != null,
+                            callingPkg);
+                }
+            } else {
+                moveToOutbox(getSubId(), messageUri, callingPkg);
+            }
             HashMap map = getSmsTrackerMap(destAddr, scAddr, text, pdu);
             SmsTracker tracker = getSmsTracker(map, sentIntent, deliveryIntent, getFormat(),
-                    messageUri, isExpectMore, text /*fullMessageText*/,
-                    true /*isText*/, validityPeriod);
-
-            String carrierPackage = getCarrierAppPackageName();
-            if (carrierPackage != null) {
-                Rlog.d(TAG, "Found carrier package.");
-                TextSmsSender smsSender = new TextSmsSender(tracker);
-                smsSender.sendSmsByCarrierApp(carrierPackage, new SmsSenderCallback(smsSender));
-            } else {
-                Rlog.v(TAG, "No carrier package.");
-                sendRawPdu(tracker);
-            }
+                    messageUri, isExpectMore, validityPeriod);
+            sendRawPdu(tracker);
         } else {
             Rlog.e(TAG, "GsmSMSDispatcher.sendText(): getSubmitPdu() returned null");
         }
@@ -228,31 +223,24 @@ public final class GsmSMSDispatcher extends SMSDispatcher {
 
     /** {@inheritDoc} */
     @Override
-    protected SmsTracker getNewSubmitPduTracker(String destinationAddress, String scAddress,
+    protected void sendNewSubmitPdu(String destinationAddress, String scAddress,
             String message, SmsHeader smsHeader, int encoding,
             PendingIntent sentIntent, PendingIntent deliveryIntent, boolean lastPart,
             int priority, boolean isExpectMore, int validityPeriod,
-            AtomicInteger unsentPartCount, AtomicBoolean anyPartFailed, Uri messageUri,
-            String fullMessageText) {
+            AtomicInteger unsentPartCount, AtomicBoolean anyPartFailed, Uri messageUri) {
         SmsMessage.SubmitPdu pdu = SmsMessage.getSubmitPdu(scAddress, destinationAddress,
                 message, deliveryIntent != null, SmsHeader.toByteArray(smsHeader),
                 encoding, smsHeader.languageTable, smsHeader.languageShiftTable, validityPeriod);
         if (pdu != null) {
             HashMap map =  getSmsTrackerMap(destinationAddress, scAddress,
                     message, pdu);
-            return getSmsTracker(map, sentIntent,
+            SmsTracker tracker = getSmsTracker(map, sentIntent,
                     deliveryIntent, getFormat(), unsentPartCount, anyPartFailed, messageUri,
-                    smsHeader, (!lastPart || isExpectMore),
-                    fullMessageText, true /*isText*/, validityPeriod);
+                    smsHeader, (!lastPart || isExpectMore), validityPeriod);
+            sendRawPdu(tracker);
         } else {
             Rlog.e(TAG, "GsmSMSDispatcher.sendNewSubmitPdu(): getSubmitPdu() returned null");
-            return null;
         }
-    }
-
-    @Override
-    protected void sendSubmitPdu(SmsTracker tracker) {
-        sendRawPdu(tracker);
     }
 
     /** {@inheritDoc} */
@@ -283,7 +271,30 @@ public final class GsmSMSDispatcher extends SMSDispatcher {
                 + " mMessageRef=" + tracker.mMessageRef
                 + " SS=" + mPhone.getServiceState().getState());
 
-        sendSmsByPstn(tracker);
+        // Send SMS via the carrier app.
+        BroadcastReceiver resultReceiver = new SMSDispatcherReceiver(tracker);
+
+        Intent intent = new Intent(Intents.SMS_SEND_ACTION);
+        String carrierPackage = getCarrierAppPackageName(intent);
+        if (carrierPackage != null) {
+            intent.setPackage(carrierPackage);
+            intent.putExtra("pdu", pdu);
+            intent.putExtra("smsc", (byte[]) map.get("smsc"));
+            intent.putExtra("format", getFormat());
+            if (tracker.mSmsHeader != null && tracker.mSmsHeader.concatRef != null) {
+                SmsHeader.ConcatRef concatRef = tracker.mSmsHeader.concatRef;
+                intent.putExtra("concat.refNumber", concatRef.refNumber);
+                intent.putExtra("concat.seqNumber", concatRef.seqNumber);
+                intent.putExtra("concat.msgCount", concatRef.msgCount);
+            }
+            intent.addFlags(Intent.FLAG_RECEIVER_NO_ABORT);
+            Rlog.d(TAG, "Sending SMS by carrier app.");
+            mContext.sendOrderedBroadcast(intent, android.Manifest.permission.RECEIVE_SMS,
+                                          AppOpsManager.OP_RECEIVE_SMS, resultReceiver,
+                                          null, Activity.RESULT_CANCELED, null, null);
+        } else {
+            sendSmsByPstn(tracker);
+        }
     }
 
     /** {@inheritDoc} */
@@ -331,6 +342,13 @@ public final class GsmSMSDispatcher extends SMSDispatcher {
             // next retry will be sent using IMS request again.
             tracker.mImsRetry++;
         }
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    protected void updateSmsSendStatus(int messageRef, boolean success) {
+        // This function should be defined in ImsDispatcher.
+        Rlog.e(TAG, "updateSmsSendStatus should never be called from here!");
     }
 
     protected UiccCardApplication getUiccCardApplication() {

@@ -176,8 +176,8 @@ public class AdnRecord implements Parcelable {
 
     @Override
     public String toString() {
-        return "ADN Record 'Tag:" + mAlphaTag + "', Num:'" + mNumber + ", Emails:" +
-            Arrays.toString(mEmails) + ", Anrs:" + Arrays.toString(mAdditionalNumbers) + "'";
+        return "ADN Record '" + mAlphaTag + "' '" + mNumber + " " + mEmails + " "
+                + mAdditionalNumbers + "'";
     }
 
     public boolean isEmpty() {

@@ -30,10 +30,6 @@ import java.util.List;
  */
 
 public class TestPhoneNotifier implements PhoneNotifier {
-    @Override
-    public void notifyOemHookRawEventForSubscriber(int subId, byte[] rawData) {
-    }
-
     public TestPhoneNotifier() {
     }
 

@@ -55,14 +55,14 @@ public class CellBroadcastMessage implements Parcelable {
      *
      * @hide
      */
-    private int mSubId = 0;
+    private long mSubId;
 
     /**
      * set Subscription information
      *
      * @hide
      */
-    public void setSubId(int subId) {
+    public void setSubId(long subId) {
         mSubId = subId;
     }
 
@@ -71,7 +71,7 @@ public class CellBroadcastMessage implements Parcelable {
      *
      * @hide
      */
-    public int getSubId() {
+    public long getSubId() {
         return mSubId;
     }
 
@@ -93,7 +93,7 @@ public class CellBroadcastMessage implements Parcelable {
         mSmsCbMessage = new SmsCbMessage(in);
         mDeliveryTime = in.readLong();
         mIsRead = (in.readInt() != 0);
-        mSubId = in.readInt();
+        mSubId = in.readLong();
     }
 
     /** Parcelable: no special flags. */
@@ -107,7 +107,7 @@ public class CellBroadcastMessage implements Parcelable {
         mSmsCbMessage.writeToParcel(out, flags);
         out.writeLong(mDeliveryTime);
         out.writeInt(mIsRead ? 1 : 0);
-        out.writeInt(mSubId);
+        out.writeLong(mSubId);
     }
 
     public static final Parcelable.Creator<CellBroadcastMessage> CREATOR

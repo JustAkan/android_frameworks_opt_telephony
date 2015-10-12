@@ -57,7 +57,7 @@ public class DefaultPhoneNotifier implements PhoneNotifier {
     @Override
     public void notifyPhoneState(Phone sender) {
         Call ringingCall = sender.getRingingCall();
-        int subId = sender.getSubId();
+        long subId = sender.getSubId();
         String incomingNumber = "";
         if (ringingCall != null && ringingCall.getEarliestConnection() != null){
             incomingNumber = ringingCall.getEarliestConnection().getAddress();
@@ -76,7 +76,7 @@ public class DefaultPhoneNotifier implements PhoneNotifier {
     public void notifyServiceState(Phone sender) {
         ServiceState ss = sender.getServiceState();
         int phoneId = sender.getPhoneId();
-        int subId = sender.getSubId();
+        long subId = sender.getSubId();
 
         Rlog.d(LOG_TAG, "nofityServiceState: mRegistry=" + mRegistry + " ss=" + ss
                 + " sender=" + sender + " phondId=" + phoneId + " subId=" + subId);
@@ -95,7 +95,7 @@ public class DefaultPhoneNotifier implements PhoneNotifier {
 
     @Override
     public void notifySignalStrength(Phone sender) {
-        int subId = sender.getSubId();
+        long subId = sender.getSubId();
         Rlog.d(LOG_TAG, "notifySignalStrength: mRegistry=" + mRegistry
                 + " ss=" + sender.getSignalStrength() + " sender=" + sender);
         try {
@@ -110,7 +110,7 @@ public class DefaultPhoneNotifier implements PhoneNotifier {
     @Override
     public void notifyMessageWaitingChanged(Phone sender) {
         int phoneId = sender.getPhoneId();
-        int subId = sender.getSubId();
+        long subId = sender.getSubId();
 
         try {
             if (mRegistry != null) {
@@ -124,7 +124,7 @@ public class DefaultPhoneNotifier implements PhoneNotifier {
 
     @Override
     public void notifyCallForwardingChanged(Phone sender) {
-        int subId = sender.getSubId();
+        long subId = sender.getSubId();
         try {
             if (mRegistry != null) {
                 mRegistry.notifyCallForwardingChangedForSubscriber(subId,
@@ -137,7 +137,7 @@ public class DefaultPhoneNotifier implements PhoneNotifier {
 
     @Override
     public void notifyDataActivity(Phone sender) {
-        int subId = sender.getSubId();
+        long subId = sender.getSubId();
         try {
             if (mRegistry != null) {
                 mRegistry.notifyDataActivityForSubscriber(subId,
@@ -156,8 +156,8 @@ public class DefaultPhoneNotifier implements PhoneNotifier {
 
     private void doNotifyDataConnection(Phone sender, String reason, String apnType,
             PhoneConstants.DataState state) {
-        int subId = sender.getSubId();
-        int dds = SubscriptionManager.getDefaultDataSubId();
+        long subId = sender.getSubId();
+        long dds = SubscriptionManager.getDefaultDataSubId();
         if (DBG) log("subId = " + subId + ", DDS = " + dds);
 
         // TODO
@@ -173,7 +173,7 @@ public class DefaultPhoneNotifier implements PhoneNotifier {
             networkCapabilities = sender.getNetworkCapabilities(apnType);
         }
         ServiceState ss = sender.getServiceState();
-        if (ss != null) roaming = ss.getDataRoaming();
+        if (ss != null) roaming = ss.getRoaming();
 
         try {
             if (mRegistry != null) {
@@ -184,7 +184,7 @@ public class DefaultPhoneNotifier implements PhoneNotifier {
                     apnType,
                     linkProperties,
                     networkCapabilities,
-                    ((telephony!=null) ? telephony.getDataNetworkType(subId) :
+                    ((telephony!=null) ? telephony.getNetworkType() :
                     TelephonyManager.NETWORK_TYPE_UNKNOWN),
                     roaming);
             }
@@ -195,7 +195,7 @@ public class DefaultPhoneNotifier implements PhoneNotifier {
 
     @Override
     public void notifyDataConnectionFailed(Phone sender, String reason, String apnType) {
-        int subId = sender.getSubId();
+        long subId = sender.getSubId();
         try {
             if (mRegistry != null) {
                 mRegistry.notifyDataConnectionFailedForSubscriber(subId, reason, apnType);
@@ -207,7 +207,7 @@ public class DefaultPhoneNotifier implements PhoneNotifier {
 
     @Override
     public void notifyCellLocation(Phone sender) {
-        int subId = sender.getSubId();
+        long subId = sender.getSubId();
         Bundle data = new Bundle();
         sender.getCellLocation().fillInNotifierBundle(data);
         try {
@@ -221,7 +221,7 @@ public class DefaultPhoneNotifier implements PhoneNotifier {
 
     @Override
     public void notifyCellInfo(Phone sender, List<CellInfo> cellInfo) {
-        int subId = sender.getSubId();
+        long subId = sender.getSubId();
         try {
             if (mRegistry != null) {
                 mRegistry.notifyCellInfoForSubscriber(subId, cellInfo);
@@ -300,7 +300,7 @@ public class DefaultPhoneNotifier implements PhoneNotifier {
     }
 
     @Override
-    public void notifyOemHookRawEventForSubscriber(int subId, byte[] rawData) {
+    public void notifyOemHookRawEventForSubscriber(long subId, byte[] rawData) {
         try {
             mRegistry.notifyOemHookRawEventForSubscriber(subId, rawData);
         } catch (RemoteException ex) {
@@ -465,7 +465,7 @@ public class DefaultPhoneNotifier implements PhoneNotifier {
     }
 
     public interface IDataStateChangedCallback {
-        void onDataStateChanged(int subId, String state, String reason, String apnName,
+        void onDataStateChanged(long subId, String state, String reason, String apnName,
             String apnType, boolean unavailable);
     }
 

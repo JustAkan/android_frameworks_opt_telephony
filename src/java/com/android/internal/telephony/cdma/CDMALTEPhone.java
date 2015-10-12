@@ -50,6 +50,7 @@ import com.android.internal.telephony.PhoneFactory;
 import com.android.internal.telephony.PhoneSubInfo;
 import com.android.internal.telephony.SMSDispatcher;
 import com.android.internal.telephony.SmsBroadcastUndelivered;
+import com.android.internal.telephony.Subscription;
 import com.android.internal.telephony.SubscriptionController;
 import com.android.internal.telephony.gsm.GsmSMSDispatcher;
 import com.android.internal.telephony.gsm.SmsMessage;
@@ -70,6 +71,8 @@ import java.io.PrintWriter;
 import static com.android.internal.telephony.TelephonyProperties.PROPERTY_ICC_OPERATOR_ALPHA;
 import static com.android.internal.telephony.TelephonyProperties.PROPERTY_ICC_OPERATOR_ISO_COUNTRY;
 import static com.android.internal.telephony.TelephonyProperties.PROPERTY_ICC_OPERATOR_NUMERIC;
+import static com.android.internal.telephony.PhoneConstants.EVENT_SUBSCRIPTION_ACTIVATED;
+import static com.android.internal.telephony.PhoneConstants.EVENT_SUBSCRIPTION_DEACTIVATED;
 
 public class CDMALTEPhone extends CDMAPhone {
     static final String LOG_LTE_TAG = "CDMALTEPhone";
@@ -95,6 +98,11 @@ public class CDMALTEPhone extends CDMAPhone {
 
         mDcTracker = new DcTracker(this);
 
+    }
+
+    // Constructors
+    public CDMALTEPhone(Context context, CommandsInterface ci, PhoneNotifier notifier) {
+        super(context, ci, notifier, false);
     }
 
     @Override
@@ -141,6 +149,16 @@ public class CDMALTEPhone extends CDMAPhone {
         switch(msg.what) {
             case EVENT_SIM_RECORDS_LOADED:
                 mSimRecordsLoadedRegistrants.notifyRegistrants();
+                break;
+
+            case EVENT_SUBSCRIPTION_ACTIVATED:
+                log("EVENT_SUBSCRIPTION_ACTIVATED");
+                onSubscriptionActivated();
+                break;
+
+            case EVENT_SUBSCRIPTION_DEACTIVATED:
+                log("EVENT_SUBSCRIPTION_DEACTIVATED");
+                onSubscriptionDeactivated();
                 break;
 
             default:
@@ -213,7 +231,7 @@ public class CDMALTEPhone extends CDMAPhone {
 
     @Override
     public boolean updateCurrentCarrierInProvider() {
-        int currentDds = SubscriptionManager.getDefaultDataSubId();
+        long currentDds = SubscriptionManager.getDefaultDataSubId();
         String operatorNumeric = getOperatorNumeric();
 
         Rlog.d(LOG_TAG, "updateCurrentCarrierInProvider: mSubscription = " + getSubId()
@@ -247,17 +265,6 @@ public class CDMALTEPhone extends CDMAPhone {
 
         log("IMSI undefined");
         return "";
-    }
-
-
-    // fix CTS test expecting IMEI to be used as device ID when in LteOnCdma mode
-    @Override
-    public String getDeviceId() {
-        if (TelephonyManager.getLteOnCdmaModeStatic() == PhoneConstants.LTE_ON_CDMA_TRUE) {
-            return mImei;
-        } else {
-            return super.getDeviceId();
-        }
     }
 
     // return GID1 from USIM
@@ -364,6 +371,29 @@ public class CDMALTEPhone extends CDMAPhone {
         setProperties();
     }
 
+    private void onSubscriptionActivated() {
+//        mSubscriptionData = SubscriptionManager.getCurrentSubscription(mSubscription);
+
+        log("SUBSCRIPTION ACTIVATED : slotId : " + mSubscriptionData.slotId
+                + " appid : " + mSubscriptionData.m3gpp2Index
+                + " subId : " + mSubscriptionData.subId
+                + " subStatus : " + mSubscriptionData.subStatus);
+
+        // Make sure properties are set for proper subscription.
+        setProperties();
+
+        onUpdateIccAvailability();
+        mSST.sendMessage(mSST.obtainMessage(ServiceStateTracker.EVENT_ICC_CHANGED));
+        ((CdmaLteServiceStateTracker)mSST).updateCdmaSubscription();
+        ((DcTracker)mDcTracker).updateRecords();
+    }
+
+    private void onSubscriptionDeactivated() {
+        log("SUBSCRIPTION DEACTIVATED");
+        // resetSubSpecifics
+        mSubscriptionData = null;
+    }
+
     // Set the properties per subscription
     private void setProperties() {
         //Change the system property
@@ -397,14 +427,14 @@ public class CDMALTEPhone extends CDMAPhone {
         if(getUnitTestMode()) {
             return;
         }
-        TelephonyManager.setTelephonyProperty(mPhoneId, property, value);
+        TelephonyManager.setTelephonyProperty(property, getSubId(), value);
     }
 
     public String getSystemProperty(String property, String defValue) {
         if(getUnitTestMode()) {
             return null;
         }
-        return TelephonyManager.getTelephonyProperty(mPhoneId, property, defValue);
+        return TelephonyManager.getTelephonyProperty(property, getSubId(), defValue);
     }
 
     public void updateDataConnectionTracker() {

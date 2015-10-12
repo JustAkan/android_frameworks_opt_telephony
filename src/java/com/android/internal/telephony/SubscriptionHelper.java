@@ -48,7 +48,6 @@ import android.util.Log;
 
 import com.android.internal.telephony.ModemBindingPolicyHandler;
 import com.android.internal.telephony.PhoneConstants;
-import com.android.internal.telephony.uicc.IccRefreshResponse;
 import com.android.internal.telephony.uicc.UiccController;
 import com.android.internal.telephony.uicc.UiccCard;
 import com.android.internal.telephony.uicc.UiccCardApplication;
@@ -72,6 +71,7 @@ class SubscriptionHelper extends Handler {
 
     private static final int EVENT_SET_UICC_SUBSCRIPTION_DONE = 1;
     private static final int EVENT_REFRESH = 2;
+    private static final int EVENT_REFRESH_OEM = 3;
 
     public static final int SUB_SET_UICC_FAIL = -100;
     public static final int SUB_SIM_NOT_INSERTED = -99;
@@ -117,8 +117,12 @@ class SubscriptionHelper extends Handler {
         for (int i=0; i < sNumPhones; i++ ) {
             mSubStatus[i] = SUB_INIT_STATE;
             Integer index = new Integer(i);
-            // Register for SIM Refresh events
-            mCi[i].registerForIccRefresh(this, EVENT_REFRESH, index);
+            if (mContext.getResources().getBoolean(
+                com.android.internal.R.bool.config_sim_refresh_for_dual_mode_card)) {
+                mCi[i].registerForSimRefreshEvent(this, EVENT_REFRESH_OEM, index);
+            } else {
+                mCi[i].registerForIccRefresh(this, EVENT_REFRESH, index);
+            }
         }
         mContext.getContentResolver().registerContentObserver(Settings.Global.getUriFor(
                 Settings.Global.PREFERRED_NETWORK_MODE), false, nwModeObserver);
@@ -131,7 +135,7 @@ class SubscriptionHelper extends Handler {
     private void updateNwModesInSubIdTable(boolean override) {
         SubscriptionController subCtrlr = SubscriptionController.getInstance();
         for (int i=0; i < sNumPhones; i++ ) {
-            int[] subIdList = subCtrlr.getSubId(i);
+            long[] subIdList = subCtrlr.getSubId(i);
             if (subIdList != null && subIdList[0] > 0) {
                 int nwModeInDb;
                 try {
@@ -157,22 +161,24 @@ class SubscriptionHelper extends Handler {
 
     @Override
     public void handleMessage(Message msg) {
+        Integer index = new Integer(PhoneConstants.DEFAULT_CARD_INDEX);
+        AsyncResult ar;
         switch(msg.what) {
             case EVENT_SET_UICC_SUBSCRIPTION_DONE:
                 logd("EVENT_SET_UICC_SUBSCRIPTION_DONE");
                 processSetUiccSubscriptionDone(msg);
                 break;
             case EVENT_REFRESH:
-                logd("EVENT_REFRESH");
-                processSimRefresh((AsyncResult)msg.obj);
+            case EVENT_REFRESH_OEM:
+                ar = (AsyncResult)msg.obj;
+                index = (Integer)ar.userObj;
+                logi(" Received SIM refresh, reset sub state " +
+                        index + " old sub state " + mSubStatus[index]);
+                mSubStatus[index] = SUB_INIT_STATE;
                 break;
            default:
            break;
         }
-    }
-
-    public boolean needSubActivationAfterRefresh(int slotId) {
-        return (mSubStatus[slotId] == SUB_INIT_STATE);
     }
 
     public void updateSubActivation(int[] simStatus, boolean isStackReadyEvent) {
@@ -192,7 +198,7 @@ class SubscriptionHelper extends Handler {
                 logd(" Sim not inserted in slot [" + slotId + "] simStatus= " + simStatus[slotId]);
                 continue;
             }
-            int[] subId = subCtrlr.getSubId(slotId);
+            long[] subId = subCtrlr.getSubId(slotId);
             int subState = subCtrlr.getSubState(subId[0]);
 
             logd("setUicc for [" + slotId + "] = " + subState + "subId = " + subId[0] +
@@ -258,7 +264,7 @@ class SubscriptionHelper extends Handler {
         AsyncResult ar = (AsyncResult)msg.obj;
         int slotId = msg.arg1;
         int newSubState = msg.arg2;
-        int[] subId = subCtrlr.getSubIdUsingSlotId(slotId);
+        long[] subId = subCtrlr.getSubIdUsingSlotId(slotId);
 
         if (ar.exception != null) {
             loge("Exception in SET_UICC_SUBSCRIPTION, slotId = " + slotId
@@ -285,25 +291,8 @@ class SubscriptionHelper extends Handler {
         }
     }
 
-    private void processSimRefresh (AsyncResult ar) {
-        if (ar.exception == null && ar.result != null) {
-            Integer index = new Integer(PhoneConstants.DEFAULT_CARD_INDEX);
-            index = (Integer)ar.userObj;
-            IccRefreshResponse state = (IccRefreshResponse)ar.result;
-            logi(" Received SIM refresh, reset sub state " +
-                    index + " old sub state " + mSubStatus[index] +
-                    " refreshResult = " + state.refreshResult);
-            if (state.refreshResult == IccRefreshResponse.REFRESH_RESULT_RESET) {
-                //Subscription activation needed.
-                mSubStatus[index] = SUB_INIT_STATE;
-            }
-        } else {
-            loge("processSimRefresh received without input");
-        }
-    }
-
     private void broadcastSetUiccResult(int slotId, int newSubState, int result) {
-        int[] subId = SubscriptionController.getInstance().getSubIdUsingSlotId(slotId);
+        long[] subId = SubscriptionController.getInstance().getSubIdUsingSlotId(slotId);
         Intent intent = new Intent(TelephonyIntents.ACTION_SUBSCRIPTION_SET_UICC_RESULT);
         intent.addFlags(Intent.FLAG_RECEIVER_REPLACE_PENDING);
         SubscriptionManager.putPhoneIdAndSubIdExtra(intent, slotId, subId[0]);

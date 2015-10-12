@@ -55,7 +55,7 @@ interface IIccPhoneBook {
      * @param subId user preferred subId
      * @return List of AdnRecord
      */
-    List<AdnRecord> getAdnRecordsInEfForSubscriber(int subId, int efid);
+    List<AdnRecord> getAdnRecordsInEfForSubscriber(long subId, int efid);
 
     /**
      * Replace oldAdn with newAdn in ADN-like record in EF
@@ -101,7 +101,7 @@ interface IIccPhoneBook {
      * @param subId user preferred subId
      * @return true for success
      */
-    boolean updateAdnRecordsInEfBySearchForSubscriber(int subId, int efid,
+    boolean updateAdnRecordsInEfBySearchForSubscriber(long subId, int efid,
             String oldTag, String oldPhoneNumber,
             String newTag, String newPhoneNumber,
             String pin2);
@@ -119,7 +119,7 @@ interface IIccPhoneBook {
     boolean updateAdnRecordsWithContentValuesInEfBySearch(int efid,
             in ContentValues values, String pin2);
 
-    boolean updateAdnRecordsWithContentValuesInEfBySearchUsingSubId(int subId,
+    boolean updateAdnRecordsWithContentValuesInEfBySearchUsingSubId(long subId,
             int efid, in ContentValues values, String pin2);
 
     /**
@@ -157,7 +157,7 @@ interface IIccPhoneBook {
      * @param subId user preferred subId
      * @return true for success
      */
-    boolean updateAdnRecordsInEfByIndexForSubscriber(int subId, int efid, String newTag,
+    boolean updateAdnRecordsInEfByIndexForSubscriber(long subId, int efid, String newTag,
             String newPhoneNumber, int index,
             String pin2);
 
@@ -182,7 +182,7 @@ interface IIccPhoneBook {
      *            recordSizes[1]  is the total length of the EF file
      *            recordSizes[2]  is the number of records in the EF file
      */
-    int[] getAdnRecordsSizeForSubscriber(int subId, int efid);
+    int[] getAdnRecordsSizeForSubscriber(long subId, int efid);
 
     /**
      * Get the adn count of sim card
@@ -190,7 +190,7 @@ interface IIccPhoneBook {
      * @return the adn count of sim card
      */
     int getAdnCount();
-    int getAdnCountUsingSubId(int subId);
+    int getAdnCountUsingSubId(long subId);
 
     /**
      * Get the anr count of sim card
@@ -198,7 +198,7 @@ interface IIccPhoneBook {
      * @return the anr count of sim card
      */
     int getAnrCount();
-    int getAnrCountUsingSubId(int subId);
+    int getAnrCountUsingSubId(long subId);
 
     /**
      * Get the email count of sim card
@@ -206,7 +206,7 @@ interface IIccPhoneBook {
      * @return the email count of sim card
      */
     int getEmailCount();
-    int getEmailCountUsingSubId(int subId);
+    int getEmailCountUsingSubId(long subId);
 
     /**
      * Get the spare anr count of sim card
@@ -214,7 +214,7 @@ interface IIccPhoneBook {
      * @return the spare anr count of sim card
      */
     int getSpareAnrCount();
-    int getSpareAnrCountUsingSubId(int subId);
+    int getSpareAnrCountUsingSubId(long subId);
 
     /**
      * Get the spare email count of sim card
@@ -222,5 +222,5 @@ interface IIccPhoneBook {
      * @return the spare email count of sim card
      */
     int getSpareEmailCount();
-    int getSpareEmailCountUsingSubId(int subId);
+    int getSpareEmailCountUsingSubId(long subId);
 }

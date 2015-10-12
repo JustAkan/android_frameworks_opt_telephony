@@ -43,7 +43,6 @@ import android.telephony.SubscriptionManager;
 import android.telephony.cdma.CdmaCellLocation;
 import android.text.TextUtils;
 import android.telephony.Rlog;
-import android.util.Log;
 
 import com.android.ims.ImsManager;
 import com.android.internal.telephony.Call;
@@ -63,7 +62,7 @@ import com.android.internal.telephony.PhoneNotifier;
 import com.android.internal.telephony.PhoneProxy;
 import com.android.internal.telephony.PhoneSubInfo;
 import com.android.internal.telephony.ServiceStateTracker;
-import com.android.internal.telephony.SubscriptionInfoUpdater;
+import com.android.internal.telephony.SubInfoRecordUpdater;
 import com.android.internal.telephony.SubscriptionController;
 import com.android.internal.telephony.TelephonyIntents;
 import com.android.internal.telephony.TelephonyProperties;
@@ -148,9 +147,23 @@ public class CDMAPhone extends PhoneBase {
     public static final String PROPERTY_CDMA_HOME_OPERATOR_NUMERIC =
             "ro.cdma.home.operator.numeric";
 
+    // Constructors
+    public CDMAPhone(Context context, CommandsInterface ci, PhoneNotifier notifier) {
+        super("CDMA", notifier, context, ci, false);
+        initSstIcc();
+        init(context, notifier);
+    }
+
     public CDMAPhone(Context context, CommandsInterface ci, PhoneNotifier notifier,
             int phoneId) {
         super("CDMA", notifier, context, ci, false, phoneId);
+        initSstIcc();
+        init(context, notifier);
+    }
+
+    public CDMAPhone(Context context, CommandsInterface ci, PhoneNotifier notifier,
+            boolean unitTestMode) {
+        super("CDMA", notifier, context, ci, unitTestMode);
         initSstIcc();
         init(context, notifier);
     }
@@ -277,10 +290,9 @@ public class CDMAPhone extends PhoneBase {
     @Override
     public ServiceState getServiceState() {
         if (mSST == null || mSST.mSS.getState() != ServiceState.STATE_IN_SERVICE) {
-            if (mImsPhone != null) {
-                return ServiceState.mergeServiceStates(
-                        (mSST == null) ? new ServiceState() : mSST.mSS,
-                        mImsPhone.getServiceState());
+            if (mImsPhone != null &&
+                    mImsPhone.getServiceState().getState() == ServiceState.STATE_IN_SERVICE) {
+                return mImsPhone.getServiceState();
             }
         }
 
@@ -300,13 +312,6 @@ public class CDMAPhone extends PhoneBase {
 
     @Override
     public PhoneConstants.State getState() {
-        if (mImsPhone != null) {
-            PhoneConstants.State imsState = mImsPhone.getState();
-            if (imsState != PhoneConstants.State.IDLE) {
-                return imsState;
-            }
-        }
-
         return mCT.mState;
     }
 
@@ -423,14 +428,13 @@ public class CDMAPhone extends PhoneBase {
         ImsPhone imsPhone = mImsPhone;
 
         boolean imsUseEnabled =
-                ImsManager.isVolteEnabledByPlatform(mContext) &&
-                ImsManager.isEnhanced4gLteModeSettingEnabledByUser(mContext) &&
-                ImsManager.isNonTtyOrTtyOnVolteEnabled(mContext);
+                ImsManager.isEnhanced4gLteModeSettingEnabledByPlatform(mContext) &&
+                ImsManager.isEnhanced4gLteModeSettingEnabledByUser(mContext);
         if (!imsUseEnabled) {
             Rlog.w(LOG_TAG, "IMS is disabled: forced to CS");
         }
 
-        if (imsUseEnabled && imsPhone != null && imsPhone.isVolteEnabled()
+        if (imsUseEnabled && imsPhone != null
                 && ((imsPhone.getServiceState().getState() == ServiceState.STATE_IN_SERVICE
                 && !PhoneNumberUtils.isEmergencyNumber(dialString))
                 || (PhoneNumberUtils.isEmergencyNumber(dialString)
@@ -440,22 +444,7 @@ public class CDMAPhone extends PhoneBase {
                 if (DBG) Rlog.d(LOG_TAG, "Trying IMS PS call");
                 return imsPhone.dial(dialString, videoState, extras);
             } catch (CallStateException e) {
-                if (DBG) Rlog.d(LOG_TAG, "IMS PS call exception " + e +
-                        "imsUseEnabled =" + imsUseEnabled + ", imsPhone =" + imsPhone);
-                if (!ImsPhone.CS_FALLBACK.equals(e.getMessage())) {
-                    CallStateException ce = new CallStateException(e.getMessage());
-                    ce.setStackTrace(e.getStackTrace());
-                    throw ce;
-                }
-            }
-        }
-
-        if (imsPhone != null && imsPhone.isUtEnabled() && dialString.endsWith("#")) {
-            try {
-                if (DBG) Rlog.d(LOG_TAG, "Trying IMS call with UT enabled");
-                return imsPhone.dial(dialString, videoState, extras);
-            } catch (CallStateException e) {
-                if (DBG) Rlog.d(LOG_TAG, "IMS call UT enable exception " + e);
+                if (DBG) Rlog.d(LOG_TAG, "IMS PS call exception " + e);
                 if (!ImsPhone.CS_FALLBACK.equals(e.getMessage())) {
                     CallStateException ce = new CallStateException(e.getMessage());
                     ce.setStackTrace(e.getStackTrace());
@@ -624,15 +613,6 @@ public class CDMAPhone extends PhoneBase {
     @Override
     public String getMeid() {
         return mMeid;
-    }
-
-    @Override
-    public String getNai() {
-        IccRecords r = mIccRecords.get();
-        if (Log.isLoggable(LOG_TAG, Log.VERBOSE)) {
-            Rlog.v(LOG_TAG, "IccRecords is " + r);
-        }
-        return (r != null) ? r.getNAI() : null;
     }
 
     //returns MEID or ESN in CDMA
@@ -1067,9 +1047,7 @@ public class CDMAPhone extends PhoneBase {
     public void getCallForwardingUncondTimerOption(int commandInterfaceCFReason,
             Message onComplete) {
         ImsPhone imsPhone = mImsPhone;
-        if ((imsPhone != null)
-                && (imsPhone.getServiceState().getState() == ServiceState.STATE_IN_SERVICE
-                || imsPhone.isUtEnabled())) {
+        if (imsPhone != null) {
             imsPhone.getCallForwardingOption(commandInterfaceCFReason, onComplete);
         } else {
             if (onComplete != null) {
@@ -1085,9 +1063,7 @@ public class CDMAPhone extends PhoneBase {
             int endHour, int endMinute, int commandInterfaceCFAction,
             int commandInterfaceCFReason, String dialingNumber, Message onComplete) {
         ImsPhone imsPhone = mImsPhone;
-        if ((imsPhone != null)
-                && (imsPhone.getServiceState().getState() == ServiceState.STATE_IN_SERVICE
-                || imsPhone.isUtEnabled())) {
+        if (imsPhone != null) {
             imsPhone.setCallForwardingUncondTimerOption(startHour, startMinute, endHour,
                     endMinute, commandInterfaceCFAction, commandInterfaceCFReason,
                     dialingNumber, onComplete);
@@ -1161,7 +1137,7 @@ public class CDMAPhone extends PhoneBase {
     }
 
     void notifyUnknownConnection(Connection connection) {
-        super.notifyUnknownConnectionP(connection);
+        mUnknownConnectionRegistrants.notifyResult(connection);
     }
 
     @Override
@@ -1286,17 +1262,6 @@ public class CDMAPhone extends PhoneBase {
         AsyncResult ar;
         Message     onComplete;
 
-        // messages to be handled whether or not the phone is being destroyed
-        // should only include messages which are being re-directed and do not use
-        // resources of the phone being destroyed
-        switch (msg.what) {
-            // handle the select network completion callbacks.
-            case EVENT_SET_NETWORK_MANUAL_COMPLETE:
-            case EVENT_SET_NETWORK_AUTOMATIC_COMPLETE:
-                super.handleMessage(msg);
-                return;
-        }
-
         if (!mIsTheCurrentActivePhone) {
             Rlog.e(LOG_TAG, "Received message " + msg +
                     "[" + msg.what + "] while being destroyed. Ignoring.");
@@ -1393,7 +1358,7 @@ public class CDMAPhone extends PhoneBase {
                 log("notifyMessageWaitingChanged");
                 mNotifier.notifyMessageWaitingChanged(this);
                 updateVoiceMail();
-                SubscriptionInfoUpdater subInfoRecordUpdater = PhoneFactory.getSubscriptionInfoUpdater();
+                SubInfoRecordUpdater subInfoRecordUpdater = PhoneFactory.getSubInfoRecordUpdater();
                 if (subInfoRecordUpdater != null) {
                     subInfoRecordUpdater.updateSubIdForNV (mPhoneId);
                 }
@@ -1945,7 +1910,7 @@ public class CDMAPhone extends PhoneBase {
             return false;
         }
 
-        UiccCard card = mUiccController.getUiccCard(getPhoneId());
+        UiccCard card = mUiccController.getUiccCard();
         if (card == null) {
             return false;
         }
@@ -1956,7 +1921,7 @@ public class CDMAPhone extends PhoneBase {
         if (status) {
             IccRecords iccRecords = mIccRecords.get();
             if (iccRecords != null) {
-                setSystemProperty(TelephonyProperties.PROPERTY_ICC_OPERATOR_ALPHA,
+                SystemProperties.set(TelephonyProperties.PROPERTY_ICC_OPERATOR_ALPHA,
                         iccRecords.getServiceProviderName());
             }
             if (mSST != null) {

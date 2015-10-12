@@ -48,9 +48,8 @@ import android.telephony.CellLocation;
 import android.telephony.Rlog;
 import android.telephony.ServiceState;
 import android.telephony.SignalStrength;
-import android.telephony.SubscriptionManager;
-import android.telephony.TelephonyManager;
 import android.telephony.gsm.GsmCellLocation;
+import android.telephony.TelephonyManager;
 import android.text.TextUtils;
 import android.util.EventLog;
 import android.util.TimeUtils;
@@ -66,14 +65,13 @@ import com.android.internal.telephony.PhoneFactory;
 import com.android.internal.telephony.RILConstants;
 import com.android.internal.telephony.RestrictedState;
 import com.android.internal.telephony.ServiceStateTracker;
+import android.telephony.SubscriptionManager;
 import com.android.internal.telephony.TelephonyIntents;
 import com.android.internal.telephony.TelephonyProperties;
 import com.android.internal.telephony.dataconnection.DcTrackerBase;
 import com.android.internal.telephony.uicc.IccCardApplicationStatus.AppState;
 import com.android.internal.telephony.uicc.IccRecords;
 import com.android.internal.telephony.uicc.SIMRecords;
-import com.android.internal.telephony.uicc.SpnOverride;
-import com.android.internal.telephony.uicc.UiccCard;
 import com.android.internal.telephony.uicc.UiccCardApplication;
 import com.android.internal.telephony.uicc.UiccController;
 import com.android.internal.telephony.PhoneConstants;
@@ -98,7 +96,6 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
     private GSMPhone mPhone;
     GsmCellLocation mCellLoc;
     GsmCellLocation mNewCellLoc;
-    SpnOverride mSpnOverride;
     int mPreferredNetworkType;
 
     private int mMaxDataCalls = 1;
@@ -157,6 +154,12 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
     private PowerManager.WakeLock mWakeLock;
     private static final String WAKELOCK_TAG = "ServiceStateTracker";
 
+    /** Keep track of SPN display rules, so we only broadcast intent if something changes. */
+    private String mCurSpn = null;
+    private String mCurPlmn = null;
+    private boolean mCurShowPlmn = false;
+    private boolean mCurShowSpn = false;
+
     /** Notification type. */
     static final int PS_ENABLED = 1001;            // Access Control blocks data service
     static final int PS_DISABLED = 1002;           // Access Control enables data service
@@ -211,7 +214,6 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
         mPhone = phone;
         mCellLoc = new GsmCellLocation();
         mNewCellLoc = new GsmCellLocation();
-        mSpnOverride = new SpnOverride();
 
         PowerManager powerManager =
                 (PowerManager)phone.getContext().getSystemService(Context.POWER_SERVICE);
@@ -300,8 +302,8 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
 
             case EVENT_SIM_READY:
                 // Set the network type, in case the radio does not restore it.
-                int networkType = PhoneFactory.calculatePreferredNetworkType(
-                        mPhone.getContext(), mPhone.getPhoneId());
+                int networkType = PhoneFactory.calculatePreferredNetworkType(mPhone.getContext(),
+                        mPhone.getPhoneId());
                 mCi.setPreferredNetworkType(networkType, null);
 
                 boolean skipRestoringSelection = mPhone.getContext().getResources().getBoolean(
@@ -480,7 +482,7 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
                 break;
 
             case EVENT_ALL_DATA_DISCONNECTED:
-                int dds = SubscriptionManager.getDefaultDataSubId();
+                long dds = SubscriptionManager.getDefaultDataSubId();
                 ProxyController.getInstance().unregisterForAllDataDisconnected(dds, this);
                 synchronized(this) {
                     if (mPendingRadioPowerOffAfterDataOff) {
@@ -614,10 +616,7 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
                     ((rule & SIMRecords.SPN_RULE_SHOW_PLMN)
                             == SIMRecords.SPN_RULE_SHOW_PLMN);
         } else {
-            // Power off state, such as airplane mode, show plmn as "No service"
-            showPlmn = true;
-            plmn = Resources.getSystem().
-                    getText(com.android.internal.R.string.lockscreen_carrier_default).toString();
+            // Power off state, such as airplane mode
             if (DBG) log("updateSpnDisplay: radio is off w/ showPlmn="
                     + showPlmn + " plmn=" + plmn);
         }
@@ -630,14 +629,31 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
                 && ((rule & SIMRecords.SPN_RULE_SHOW_SPN)
                         == SIMRecords.SPN_RULE_SHOW_SPN);
 
-        // airplane mode or spn equals plmn, do not show spn
-        if (mSS.getVoiceRegState() == ServiceState.STATE_POWER_OFF
-                || (showPlmn && TextUtils.equals(spn, plmn))) {
-            spn = null;
-            showSpn = false;
+        // Update SPN_STRINGS_UPDATED_ACTION IFF any value changes
+        if (showPlmn != mCurShowPlmn
+                || showSpn != mCurShowSpn
+                || !TextUtils.equals(spn, mCurSpn)
+                || !TextUtils.equals(plmn, mCurPlmn)) {
+            if (DBG) {
+                log(String.format("updateSpnDisplay: changed" +
+                        " sending intent rule=" + rule +
+                        " showPlmn='%b' plmn='%s' showSpn='%b' spn='%s'",
+                        showPlmn, plmn, showSpn, spn));
+            }
+            Intent intent = new Intent(TelephonyIntents.SPN_STRINGS_UPDATED_ACTION);
+            intent.addFlags(Intent.FLAG_RECEIVER_REPLACE_PENDING);
+            intent.putExtra(TelephonyIntents.EXTRA_SHOW_SPN, showSpn);
+            intent.putExtra(TelephonyIntents.EXTRA_SPN, spn);
+            intent.putExtra(TelephonyIntents.EXTRA_SHOW_PLMN, showPlmn);
+            intent.putExtra(TelephonyIntents.EXTRA_PLMN, plmn);
+            SubscriptionManager.putPhoneIdAndSubIdExtra(intent, mPhone.getPhoneId());
+            mPhone.getContext().sendStickyBroadcastAsUser(intent, UserHandle.ALL);
         }
 
-        sendSpnStringsBroadcastIfNeeded(plmn, showPlmn, spn, showSpn);
+        mCurShowSpn = showSpn;
+        mCurShowPlmn = showPlmn;
+        mCurSpn = spn;
+        mCurPlmn = plmn;
     }
 
     /**
@@ -810,23 +826,12 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
                     String opNames[] = (String[])ar.result;
 
                     if (opNames != null && opNames.length >= 3) {
-                        // FIXME: Giving brandOverride higher precedence, is this desired?
-                        String brandOverride = mUiccController.getUiccCard(getPhoneId()) != null ?
-                            mUiccController.getUiccCard(getPhoneId()).getOperatorBrandOverride() : null;
+                        String brandOverride = mUiccController.getUiccCard() != null ?
+                            mUiccController.getUiccCard().getOperatorBrandOverride() : null;
                         if (brandOverride != null) {
-                            log("EVENT_POLL_STATE_OPERATOR: use brandOverride=" + brandOverride);
                             mNewSS.setOperatorName(brandOverride, brandOverride, opNames[2]);
                         } else {
-                            String strOperatorLong = null;
-                            if (mSpnOverride.containsCarrier(opNames[2])) {
-                                log("EVENT_POLL_STATE_OPERATOR: use spnOverride");
-                                strOperatorLong = mSpnOverride.getSpn(opNames[2]);
-                            } else {
-                                log("EVENT_POLL_STATE_OPERATOR: use value from ril");
-                                strOperatorLong = opNames[0];
-                            }
-                            log("EVENT_POLL_STATE_OPERATOR: " + strOperatorLong);
-                            mNewSS.setOperatorName (strOperatorLong, opNames[1], opNames[2]);
+                            mNewSS.setOperatorName(opNames[0], opNames[1], opNames[2]);
                         }
                     }
                     break;
@@ -874,61 +879,9 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
                 (isSameNamedOperators(mNewSS) || isOperatorConsideredNonRoaming(mNewSS))) {
                 roaming = false;
             }
-
-            if (mPhone.isMccMncMarkedAsNonRoaming(mNewSS.getOperatorNumeric())) {
-                roaming = false;
-            } else if (mPhone.isMccMncMarkedAsRoaming(mNewSS.getOperatorNumeric())) {
-                roaming = true;
-            }
-
-            mNewSS.setVoiceRoaming(roaming);
-            mNewSS.setDataRoaming(roaming);
-
+            mNewSS.setRoaming(roaming);
             mNewSS.setEmergencyOnly(mEmergencyOnly);
             pollStateDone();
-        }
-    }
-
-    /**
-     * Set both voice and data roaming type,
-     * judging from the ISO country of SIM VS network.
-     */
-    protected void setRoamingType(ServiceState currentServiceState) {
-        final boolean isVoiceInService =
-                (currentServiceState.getVoiceRegState() == ServiceState.STATE_IN_SERVICE);
-        if (isVoiceInService) {
-            if (currentServiceState.getVoiceRoaming()) {
-                // check roaming type by MCC
-                if (inSameCountry(currentServiceState.getVoiceOperatorNumeric())) {
-                    currentServiceState.setVoiceRoamingType(
-                            ServiceState.ROAMING_TYPE_DOMESTIC);
-                } else {
-                    currentServiceState.setVoiceRoamingType(
-                            ServiceState.ROAMING_TYPE_INTERNATIONAL);
-                }
-            } else {
-                currentServiceState.setVoiceRoamingType(ServiceState.ROAMING_TYPE_NOT_ROAMING);
-            }
-        }
-        final boolean isDataInService =
-                (currentServiceState.getDataRegState() == ServiceState.STATE_IN_SERVICE);
-        final int dataRegType = currentServiceState.getRilDataRadioTechnology();
-        if (isDataInService) {
-            if (!currentServiceState.getDataRoaming()) {
-                currentServiceState.setDataRoamingType(ServiceState.ROAMING_TYPE_NOT_ROAMING);
-            } else if (ServiceState.isGsm(dataRegType)) {
-                if (isVoiceInService) {
-                    // GSM data should have the same state as voice
-                    currentServiceState.setDataRoamingType(currentServiceState
-                            .getVoiceRoamingType());
-                } else {
-                    // we can not decide GSM data roaming type without voice
-                    currentServiceState.setDataRoamingType(ServiceState.ROAMING_TYPE_UNKNOWN);
-                }
-            } else {
-                // we can not decide 3gpp2 roaming state here
-                currentServiceState.setDataRoamingType(ServiceState.ROAMING_TYPE_UNKNOWN);
-            }
         }
     }
 
@@ -965,12 +918,8 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
                 setSignalStrengthDefaultValues();
                 mGotCountryCode = false;
                 mNitzUpdatedTime = false;
-                if (!isIwlanFeatureAvailable()
-                    || (ServiceState.RIL_RADIO_TECHNOLOGY_IWLAN
-                        != mSS.getRilDataRadioTechnology())) {
-                    pollStateDone();
+                pollStateDone();
 
-                }
                 /**
                  * If iwlan feature is enabled then we do get
                  * voice_network_change indication from RIL. At this moment we
@@ -1023,8 +972,7 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
         }
 
         if (Build.IS_DEBUGGABLE && SystemProperties.getBoolean(PROP_FORCE_ROAMING, false)) {
-            mNewSS.setVoiceRoaming(true);
-            mNewSS.setDataRoaming(true);
+            mNewSS.setRoaming(true);
         }
 
         useDataRegStateForDataOnlyDevices();
@@ -1059,19 +1007,31 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
 
         boolean hasChanged = !mNewSS.equals(mSS);
 
-        boolean hasVoiceRoamingOn = !mSS.getVoiceRoaming() && mNewSS.getVoiceRoaming();
+        boolean hasRoamingOn = !mSS.getRoaming() && mNewSS.getRoaming();
 
-        boolean hasVoiceRoamingOff = mSS.getVoiceRoaming() && !mNewSS.getVoiceRoaming();
-
-        boolean hasDataRoamingOn = !mSS.getDataRoaming() && mNewSS.getDataRoaming();
-
-        boolean hasDataRoamingOff = mSS.getDataRoaming() && !mNewSS.getDataRoaming();
+        boolean hasRoamingOff = mSS.getRoaming() && !mNewSS.getRoaming();
 
         boolean hasLocationChanged = !mNewCellLoc.equals(mCellLoc);
 
         boolean needNotifyData = (mSS.getCssIndicator() != mNewSS.getCssIndicator());
 
-        resetServiceStateInIwlanMode();
+        if (mCi.getRadioState() == CommandsInterface.RadioState.RADIO_OFF) {
+            boolean resetIwlanRatVal = false;
+            log("set service state as POWER_OFF");
+            if (isIwlanFeatureAvailable()
+                    && (ServiceState.RIL_RADIO_TECHNOLOGY_IWLAN
+                        == mNewSS.getRilDataRadioTechnology())) {
+                log("pollStateDone: mNewSS = " + mNewSS);
+                log("pollStateDone: reset iwlan RAT value");
+                resetIwlanRatVal = true;
+            }
+            mNewSS.setStateOff();
+            if (resetIwlanRatVal) {
+                mNewSS.setRilDataRadioTechnology(ServiceState.RIL_RADIO_TECHNOLOGY_IWLAN);
+                log("pollStateDone: mNewSS = " + mNewSS);
+                resetIwlanRatVal = false;
+            }
+        }
 
         // Add an event log when connection state changes
         if (hasVoiceRegStateChanged || hasDataRegStateChanged) {
@@ -1276,10 +1236,8 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
             }
 
             mPhone.setSystemProperty(TelephonyProperties.PROPERTY_OPERATOR_ISROAMING,
-                mSS.getVoiceRoaming() ? "true" : "false");
+                mSS.getRoaming() ? "true" : "false");
 
-            setRoamingType(mSS);
-            log("Broadcasting ServiceState : " + mSS);
             mPhone.notifyServiceStateChanged(mSS);
         }
 
@@ -1316,20 +1274,12 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
             mAttachedRegistrants.notifyRegistrants();
         }
 
-        if (hasVoiceRoamingOn) {
-            mVoiceRoamingOnRegistrants.notifyRegistrants();
+        if (hasRoamingOn) {
+            mRoamingOnRegistrants.notifyRegistrants();
         }
 
-        if (hasVoiceRoamingOff) {
-            mVoiceRoamingOffRegistrants.notifyRegistrants();
-        }
-
-        if (hasDataRoamingOn) {
-            mDataRoamingOnRegistrants.notifyRegistrants();
-        }
-
-        if (hasDataRoamingOff) {
-            mDataRoamingOffRegistrants.notifyRegistrants();
+        if (hasRoamingOff) {
+            mRoamingOffRegistrants.notifyRegistrants();
         }
 
         if (hasLocationChanged) {
@@ -1995,15 +1945,6 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
     private void setNotification(int notifyType) {
 
         if (DBG) log("setNotification: create notification " + notifyType);
-
-        // Needed because sprout RIL sends these when they shouldn't?
-        boolean isSetNotification = mPhone.getContext().getResources().getBoolean(
-                com.android.internal.R.bool.config_user_notification_of_restrictied_mobile_access);
-        if (!isSetNotification) {
-            if (DBG) log("Ignore all the notifications");
-            return;
-        }
-
         Context context = mPhone.getContext();
 
         mNotification = new Notification();
@@ -2020,10 +1961,6 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
 
         switch (notifyType) {
         case PS_ENABLED:
-            int dataSubId = SubscriptionManager.getDefaultDataSubId();
-            if (dataSubId != mPhone.getSubId()) {
-                return;
-            }
             notificationId = PS_NOTIFICATION;
             details = context.getText(com.android.internal.R.string.RestrictedOnData);
             break;
@@ -2125,7 +2062,6 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
         pw.println(" mDataRoaming=" + mDataRoaming);
         pw.println(" mEmergencyOnly=" + mEmergencyOnly);
         pw.println(" mNeedFixZoneAfterNitz=" + mNeedFixZoneAfterNitz);
-        pw.flush();
         pw.println(" mZoneOffset=" + mZoneOffset);
         pw.println(" mZoneDst=" + mZoneDst);
         pw.println(" mZoneTime=" + mZoneTime);
@@ -2138,7 +2074,10 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
         pw.println(" mReportedGprsNoReg=" + mReportedGprsNoReg);
         pw.println(" mNotification=" + mNotification);
         pw.println(" mWakeLock=" + mWakeLock);
-        pw.flush();
+        pw.println(" mCurSpn=" + mCurSpn);
+        pw.println(" mCurShowSpn=" + mCurShowSpn);
+        pw.println(" mCurPlmn=" + mCurPlmn);
+        pw.println(" mCurShowPlmn=" + mCurShowPlmn);
     }
 
 
@@ -2151,25 +2090,18 @@ final class GsmServiceStateTracker extends ServiceStateTracker {
     public void powerOffRadioSafely(DcTrackerBase dcTracker) {
         synchronized (this) {
             if (!mPendingRadioPowerOffAfterDataOff) {
-                int dds = SubscriptionManager.getDefaultDataSubId();
+                long dds = SubscriptionManager.getDefaultDataSubId();
                 // To minimize race conditions we call cleanUpAllConnections on
                 // both if else paths instead of before this isDisconnected test.
                 if (dcTracker.isDisconnected()
                         && (dds == mPhone.getSubId()
                             || (dds != mPhone.getSubId()
-                                && ProxyController.getInstance().isDataDisconnected(dds))
-                            || !SubscriptionManager.isValidSubscriptionId(dds))) {
+                                && ProxyController.getInstance().isDataDisconnected(dds)))) {
                     // To minimize race conditions we do this after isDisconnected
                     dcTracker.cleanUpAllConnections(Phone.REASON_RADIO_TURNED_OFF);
                     if (DBG) log("Data disconnected, turn off radio right away.");
                     hangupAndPowerOff();
                 } else {
-                    // hang up all active voice calls first
-                    if (mPhone.isInCall()) {
-                        mPhone.mCT.mRingingCall.hangupIfAlive();
-                        mPhone.mCT.mBackgroundCall.hangupIfAlive();
-                        mPhone.mCT.mForegroundCall.hangupIfAlive();
-                    }
                     dcTracker.cleanUpAllConnections(Phone.REASON_RADIO_TURNED_OFF);
                     if (dds != mPhone.getSubId()
                             && !ProxyController.getInstance().isDataDisconnected(dds)) {

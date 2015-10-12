@@ -141,7 +141,6 @@ class IconLoader extends Handler {
                 }
                 break;
             case EVENT_READ_ICON_DONE:
-                CatLog.d(this, "load icon done");
                 ar = (AsyncResult) msg.obj;
                 byte[] rawData = ((byte[]) ar.result);
                 if (mId.mCodingScheme == ImageDescriptor.CODING_SCHEME_BASIC) {
@@ -152,7 +151,7 @@ class IconLoader extends Handler {
                     mIconData = rawData;
                     readClut();
                 } else {
-                    CatLog.d(this, "else  /postIcon ");
+                    // post null icon back to the caller.
                     postIcon();
                 }
                 break;

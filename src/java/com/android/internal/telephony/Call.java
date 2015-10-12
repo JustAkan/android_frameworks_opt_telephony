@@ -16,8 +16,6 @@
 
 package com.android.internal.telephony;
 
-import android.telecom.ConferenceParticipant;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -129,15 +127,6 @@ public abstract class Call {
     *         to override this method to return the extras.
     */
     public Bundle getExtras() {
-        return null;
-    }
-
-    /**
-     * getConferenceParticipants
-     * @return List of conference participants. Expected to be overwritten
-     *         by subclasses.
-     */
-    public List<ConferenceParticipant> getConferenceParticipants() {
         return null;
     }
 

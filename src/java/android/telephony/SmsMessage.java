@@ -16,8 +16,8 @@
 
 package android.telephony;
 
-import android.os.Binder;
 import android.os.Parcel;
+import android.telephony.Rlog;
 import android.content.res.Resources;
 import android.telephony.SubscriptionManager;
 import android.text.TextUtils;
@@ -110,13 +110,13 @@ public class SmsMessage {
      *
      * @hide
      */
-    private int mSubId = 0;
+    private long mSubId = 0;
 
     /** set Subscription information
      *
      * @hide
      */
-    public void setSubId(int subId) {
+    public void setSubId(long subId) {
         mSubId = subId;
     }
 
@@ -124,7 +124,7 @@ public class SmsMessage {
      *
      * @hide
      */
-    public int getSubId() {
+    public long getSubId() {
         return mSubId;
     }
 
@@ -277,7 +277,7 @@ public class SmsMessage {
      *
      * @hide
      */
-    public static SmsMessage createFromEfRecord(int index, byte[] data, int subId) {
+    public static SmsMessage createFromEfRecord(int index, byte[] data, long subId) {
         SmsMessageBase wrappedMessage;
 
         if (isCdmaVoice(subId)) {
@@ -413,45 +413,6 @@ public class SmsMessage {
         int pos = 0;  // Index in code units.
         int textLen = newMsgBody.length();
         ArrayList<String> result = new ArrayList<String>(ted.msgCount);
-//cm11 f180l
- 	// For LGT SMS
-         int MAX_LGT_SMS_BYTES = 100;
- 	int textbyteSize = 0;
- 	byte[] textbyte = {0};
- 	try {
- 		textbyte = text.getBytes("KSC5601");
- 		textbyteSize = textbyte.length;
- 	} catch (Exception ex) {
- 		Rlog.e(LOG_TAG, "fragmentText getBytes error1: " + ex);
- 	}
- 
- 	// msg byte <= MAX Byte
- 	if ( textbyteSize <= MAX_LGT_SMS_BYTES )
- 	    result.add(text);
- 
- 	// msg byte >= MAX Byte
- 	else {
- 	    while (ted.msgCount > 0) {
- 	    	ted.msgCount--;
- 	    	int textSize = 0;
-             	int nextPos = 0;  // Counts code units.
- 	    	String tmptext = "";
- 	    	while ( (textSize < MAX_LGT_SMS_BYTES) && ((pos + nextPos) < textLen) ) {
- 		    nextPos++;
- 		    tmptext = text.substring(pos, pos + nextPos);
- 		    try {
- 			     byte[] tmptextbyte = tmptext.getBytes("KSC5601");
- 			     textSize = tmptextbyte.length;
- 		    } catch (Exception ex) {
- 			     Rlog.e(LOG_TAG, "fragmentText getBytes error2: " + ex);
- 		    }		    
- 	        }
-             	result.add(text.substring(pos, pos + nextPos));
-             	pos += nextPos;
-             }
- 	}
- 
- /*
         while (pos < textLen) {
             int nextPos = 0;  // Counts code units.
             if (ted.codeUnitSize == SmsConstants.ENCODING_7BIT) {
@@ -474,7 +435,6 @@ public class SmsMessage {
             result.add(newMsgBody.substring(pos, nextPos));
             pos = nextPos;
         }
-*/
         return result;
     }
 
@@ -553,7 +513,7 @@ public class SmsMessage {
      * @hide
      */
     public static SubmitPdu getSubmitPdu(String scAddress,
-            String destinationAddress, String message, boolean statusReportRequested, int subId) {
+            String destinationAddress, String message, boolean statusReportRequested, long subId) {
         SubmitPduBase spb;
         if (useCdmaFormatForMoSms(subId)) {
             spb = com.android.internal.telephony.cdma.SmsMessage.getSubmitPdu(scAddress,
@@ -848,7 +808,7 @@ public class SmsMessage {
      * @return true if Cdma format should be used for MO SMS, false otherwise.
      */
     private static boolean useCdmaFormatForMoSms() {
-        SmsManager smsManager = SmsManager.getSmsManagerForSubscriptionId(
+        SmsManager smsManager = SmsManager.getSmsManagerForSubscriber(
                 SubscriptionManager.getDefaultSmsSubId());
         if (!smsManager.isImsSmsSupported()) {
             // use Voice technology to determine SMS format.
@@ -867,8 +827,8 @@ public class SmsMessage {
      *
      * @return true if Cdma format should be used for MO SMS, false otherwise.
      */
-    private static boolean useCdmaFormatForMoSms(int subId) {
-        SmsManager smsManager = SmsManager.getSmsManagerForSubscriptionId(subId);
+    private static boolean useCdmaFormatForMoSms(long subId) {
+        SmsManager smsManager = SmsManager.getSmsManagerForSubscriber(subId);
         if (!smsManager.isImsSmsSupported()) {
             // use Voice technology to determine SMS format.
             return isCdmaVoice(subId);
@@ -893,7 +853,7 @@ public class SmsMessage {
      * @param subId Subscription Id of the SMS
      * @return true if current phone type is cdma, false otherwise.
      */
-    private static boolean isCdmaVoice(int subId) {
+    private static boolean isCdmaVoice(long subId) {
         int activePhone = TelephonyManager.getDefault().getCurrentPhoneType(subId);
         return (PHONE_TYPE_CDMA == activePhone);
     }
@@ -907,15 +867,8 @@ public class SmsMessage {
             return true;
         }
 
-        String simOperator;
-        String gid;
-        final long identity = Binder.clearCallingIdentity();
-        try {
-            simOperator = TelephonyManager.getDefault().getSimOperator();
-            gid = TelephonyManager.getDefault().getGroupIdLevel1();
-        } finally {
-            Binder.restoreCallingIdentity(identity);
-        }
+        String simOperator = TelephonyManager.getDefault().getSimOperator();
+        String gid = TelephonyManager.getDefault().getGroupIdLevel1();
 
         for (NoEmsSupportConfig currentConfig : mNoEmsSupportConfigList) {
             if (simOperator.startsWith(currentConfig.mOperatorNumber) &&
@@ -937,15 +890,8 @@ public class SmsMessage {
             return false;
         }
 
-        String simOperator;
-        String gid;
-        final long identity = Binder.clearCallingIdentity();
-        try {
-            simOperator = TelephonyManager.getDefault().getSimOperator();
-            gid = TelephonyManager.getDefault().getGroupIdLevel1();
-        } finally {
-            Binder.restoreCallingIdentity(identity);
-        }
+        String simOperator = TelephonyManager.getDefault().getSimOperator();
+        String gid = TelephonyManager.getDefault().getGroupIdLevel1();
         for (NoEmsSupportConfig currentConfig : mNoEmsSupportConfigList) {
             if (simOperator.startsWith(currentConfig.mOperatorNumber) &&
                 (TextUtils.isEmpty(currentConfig.mGid1) ||

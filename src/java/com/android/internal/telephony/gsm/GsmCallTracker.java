@@ -28,7 +28,6 @@ import android.telephony.ServiceState;
 import android.telephony.TelephonyManager;
 import android.telephony.gsm.GsmCellLocation;
 import android.util.EventLog;
-import java.util.Iterator;
 import android.telephony.Rlog;
 
 import com.android.internal.telephony.Call;
@@ -47,7 +46,6 @@ import com.android.internal.telephony.gsm.CallFailCause;
 import com.android.internal.telephony.gsm.GSMPhone;
 import com.android.internal.telephony.gsm.GsmCall;
 import com.android.internal.telephony.gsm.GsmConnection;
-import com.android.internal.telephony.imsphone.ImsPhoneConnection;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -436,8 +434,7 @@ public final class GsmCallTracker extends CallTracker {
         }
 
         Connection newRinging = null; //or waiting
-        ArrayList<Connection> newUnknownConnections =
-            new ArrayList<Connection>();
+        Connection newUnknown = null;
         boolean hasNonHangupStateChanged = false;   // Any change besides
                                                     // a dropped connection
         boolean hasAnyCallDisconnected = false;
@@ -497,15 +494,9 @@ public final class GsmCallTracker extends CallTracker {
                     if (hoConnection != null) {
                         // Single Radio Voice Call Continuity (SRVCC) completed
                         mConnections[i].migrateFrom(hoConnection);
-                        for (Iterator<Connection> it = mHandoverConnections.iterator();
-                            it.hasNext();) {
-                            Connection c = it.next();
-                            Rlog.i(LOG_TAG, "HO Conn state is " + c.mPreHandoverState);
-                            if (c.mPreHandoverState == mConnections[i].getState()) {
-                                Rlog.i(LOG_TAG, "Removing HO conn "
-                                    + hoConnection + c.mPreHandoverState);
-                                it.remove();
-                            }
+                        if (!hoConnection.isMultiparty()) {
+                            // Remove only if it is not multiparty
+                            mHandoverConnections.remove(hoConnection);
                         }
                         mPhone.notifyHandoverStateChanged(mConnections[i]);
                     } else if ( mConnections[i].getCall() == mRingingCall ) { // it's a ringing call
@@ -530,7 +521,7 @@ public final class GsmCallTracker extends CallTracker {
                             }
                         }
 
-                        newUnknownConnections.add(mConnections[i]);
+                        newUnknown = mConnections[i];
 
                         unknownConnectionAppeared = true;
                     }
@@ -624,13 +615,6 @@ public final class GsmCallTracker extends CallTracker {
             }
         }
 
-        /* Disconnect any pending Handover connections */
-        for (Connection hoConnection : mHandoverConnections) {
-            log("handlePollCalls - disconnect hoConn= " + hoConnection.toString());
-            ((ImsPhoneConnection)hoConnection).onDisconnect(DisconnectCause.NOT_VALID);
-            mHandoverConnections.remove(hoConnection);
-        }
-
         // Any non-local disconnects: determine cause
         if (mDroppedDuringPoll.size() > 0) {
             mCi.getLastCallFailCause(
@@ -653,10 +637,7 @@ public final class GsmCallTracker extends CallTracker {
         updatePhoneState();
 
         if (unknownConnectionAppeared) {
-           for (Connection c : newUnknownConnections) {
-               log("Notify unknown for " + c);
-               mPhone.notifyUnknownConnection(c);
-           }
+            mPhone.notifyUnknownConnection(newUnknown);
         }
 
         if (hasNonHangupStateChanged || newRinging != null || hasAnyCallDisconnected) {
@@ -997,9 +978,5 @@ public final class GsmCallTracker extends CallTracker {
         pw.println(" mPhone=" + mPhone);
         pw.println(" mDesiredMute=" + mDesiredMute);
         pw.println(" mState=" + mState);
-    }
-    @Override
-    public PhoneConstants.State getState() {
-        return mState;
     }
 }

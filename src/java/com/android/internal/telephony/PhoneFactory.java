@@ -34,16 +34,12 @@ import com.android.internal.telephony.cdma.CDMALTEPhone;
 import com.android.internal.telephony.cdma.CDMAPhone;
 import com.android.internal.telephony.cdma.CdmaSubscriptionSourceManager;
 import com.android.internal.telephony.gsm.GSMPhone;
-import com.android.internal.telephony.SubscriptionInfoUpdater;
 import com.android.internal.telephony.imsphone.ImsPhone;
 import com.android.internal.telephony.imsphone.ImsPhoneFactory;
 import com.android.internal.telephony.sip.SipPhone;
 import com.android.internal.telephony.sip.SipPhoneFactory;
-import com.android.internal.telephony.uicc.IccCardProxy;
 import com.android.internal.telephony.uicc.UiccController;
 
-import java.io.FileDescriptor;
-import java.io.PrintWriter;
 import java.lang.reflect.Constructor;
 
 /**
@@ -67,7 +63,7 @@ public class PhoneFactory {
     static private UiccController mUiccController;
 
     static private CommandsInterface sCommandsInterface = null;
-    static private SubscriptionInfoUpdater sSubInfoRecordUpdater = null;
+    static private SubInfoRecordUpdater sSubInfoRecordUpdater = null;
     static private ModemBindingPolicyHandler sModemBindingPolicyHandler;
     static private ModemStackController sModemStackController;
 
@@ -233,7 +229,7 @@ public class PhoneFactory {
                 sMadeDefaults = true;
 
                 Rlog.i(LOG_TAG, "Creating SubInfoRecordUpdater ");
-                sSubInfoRecordUpdater = new SubscriptionInfoUpdater(context,
+                sSubInfoRecordUpdater = new SubInfoRecordUpdater(context,
                         sProxyPhones, sCommandsInterfaces);
                 SubscriptionController.getInstance().updatePhonesAvailability(sProxyPhones);
             }
@@ -275,16 +271,22 @@ public class PhoneFactory {
     }
 
     public static Phone getPhone(int phoneId) {
+        Phone phone;
         synchronized (sLockProxyPhones) {
             if (!sMadeDefaults) {
                 throw new IllegalStateException("Default phones haven't been made yet!");
                 // CAF_MSIM FIXME need to introduce default phone id ?
-            } else if (phoneId == SubscriptionManager.DEFAULT_PHONE_INDEX) {
-                return sProxyPhone;
-            } else if (phoneId >= 0 && phoneId < TelephonyManager.getDefault().getPhoneCount()) {
-                return sProxyPhones[phoneId];
+            } else if (phoneId == SubscriptionManager.DEFAULT_PHONE_ID) {
+                Rlog.d(LOG_TAG, "getPhone: phoneId == DEFAULT_PHONE_ID");
+                phone = sProxyPhone;
+            } else {
+                Rlog.d(LOG_TAG, "getPhone: phoneId != DEFAULT_PHONE_ID");
+                phone = (((phoneId >= 0)
+                                && (phoneId < TelephonyManager.getDefault().getPhoneCount()))
+                        ? sProxyPhones[phoneId] : null);
             }
-            return null;
+            Rlog.d(LOG_TAG, "getPhone:- phone=" + phone);
+            return phone;
         }
     }
 
@@ -295,6 +297,36 @@ public class PhoneFactory {
             }
             return sProxyPhones;
         }
+    }
+
+    public static Phone getCdmaPhone() {
+        if (!sMadeDefaults) {
+            throw new IllegalStateException("Default phones haven't been made yet!");
+        }
+        Phone phone;
+        synchronized(PhoneProxy.lockForRadioTechnologyChange) {
+            switch (TelephonyManager.getLteOnCdmaModeStatic()) {
+                case PhoneConstants.LTE_ON_CDMA_TRUE: {
+                    phone = new CDMALTEPhone(sContext, sCommandsInterface, sPhoneNotifier);
+                    break;
+                }
+                case PhoneConstants.LTE_ON_CDMA_FALSE:
+                case PhoneConstants.LTE_ON_CDMA_UNKNOWN:
+                default: {
+                    phone = new CDMAPhone(sContext, sCommandsInterface, sPhoneNotifier);
+                    break;
+                }
+            }
+        }
+        return phone;
+    }
+
+    public static Phone getGsmPhone() {
+        int phoneId = SubscriptionController.getInstance().getPhoneId(getDefaultSubscription());
+        if (phoneId < 0 || phoneId >= TelephonyManager.getDefault().getPhoneCount()) {
+            phoneId = 0;
+        }
+        return getGsmPhone(phoneId);
     }
 
     public static Context getContext() {
@@ -353,31 +385,30 @@ public class PhoneFactory {
      */
     // TODO: Fix when we "properly" have TelephonyDevController/SubscriptionController ..
     public static int calculatePreferredNetworkType(Context context, int phoneId) {
+        int networkType;
         int preferredNetworkType = RILConstants.PREFERRED_NETWORK_MODE;
         if (TelephonyManager.getLteOnCdmaModeStatic(phoneId) == PhoneConstants.LTE_ON_CDMA_TRUE) {
             preferredNetworkType = Phone.NT_MODE_GLOBAL;
         }
-        int networkType = preferredNetworkType;
-        try {
-            networkType = TelephonyManager.getIntAtIndex(
-                    context.getContentResolver(),
+         try {
+            networkType = TelephonyManager.getIntAtIndex(context.getContentResolver(),
                     Settings.Global.PREFERRED_NETWORK_MODE, phoneId);
-        } catch (SettingNotFoundException snfe) {
-            Rlog.e(LOG_TAG, "Settings Exception Reading Value At Index for"
-                    + " Settings.Global.PREFERRED_NETWORK_MODE");
-        }
-        Rlog.d(LOG_TAG, "calculatePreferredNetworkType: phoneId = " + phoneId);
+            } catch (SettingNotFoundException snfe) {
+                Rlog.e(LOG_TAG, "Settings Exception Reading Value At Index " + phoneId +
+                        " for Settings.Global.PREFERRED_NETWORK_MODE");
+                networkType = preferredNetworkType;
+            }
         return networkType;
     }
 
     /* Gets the default subscription */
-    public static int getDefaultSubscription() {
+    public static long getDefaultSubscription() {
         return SubscriptionController.getInstance().getDefaultSubId();
     }
 
     /* Gets User preferred Voice subscription setting*/
     public static int getVoiceSubscription() {
-        int subId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+        int subId = 0;
 
         try {
             subId = Settings.Global.getInt(sContext.getContentResolver(),
@@ -386,7 +417,6 @@ public class PhoneFactory {
             Rlog.e(LOG_TAG, "Settings Exception Reading Dual Sim Voice Call Values");
         }
 
-        // FIXME can this be removed? We should not set defaults
         int phoneId = SubscriptionController.getInstance().getPhoneId(subId);
         // Set subscription to 0 if current subscription is invalid.
         // Ex: multisim.config property is TSTS and subscription is 2.
@@ -450,20 +480,19 @@ public class PhoneFactory {
     }
 
     /* Gets User preferred Data subscription setting*/
-    public static int getDataSubscription() {
-        int subId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+    public static long getDataSubscription() {
+        long subId = 1;
 
         try {
-            subId = Settings.Global.getInt(sContext.getContentResolver(),
+            subId = Settings.Global.getLong(sContext.getContentResolver(),
                     Settings.Global.MULTI_SIM_DATA_CALL_SUBSCRIPTION);
         } catch (SettingNotFoundException snfe) {
             Rlog.e(LOG_TAG, "Settings Exception Reading Dual Sim Data Call Values");
         }
 
-        // FIXME can this be removed? We should not set defaults
         int phoneId = SubscriptionController.getInstance().getPhoneId(subId);
         if (phoneId < 0 || phoneId >= TelephonyManager.getDefault().getPhoneCount()) {
-            subId = 0;
+            subId = 1;
             Rlog.i(LOG_TAG, "Subscription is invalid..." + subId + " Set to 0");
             setDataSubscription(subId);
         }
@@ -473,7 +502,7 @@ public class PhoneFactory {
 
     /* Gets User preferred SMS subscription setting*/
     public static int getSMSSubscription() {
-        int subId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+        int subId = 0;
         try {
             subId = Settings.Global.getInt(sContext.getContentResolver(),
                     Settings.Global.MULTI_SIM_SMS_SUBSCRIPTION);
@@ -481,7 +510,6 @@ public class PhoneFactory {
             Rlog.e(LOG_TAG, "Settings Exception Reading Dual Sim SMS Values");
         }
 
-        // FIXME can this be removed? We should not set defaults
         int phoneId = SubscriptionController.getInstance().getPhoneId(subId);
         if (phoneId < 0 || phoneId >= TelephonyManager.getDefault().getPhoneCount()) {
             Rlog.i(LOG_TAG, "Subscription is invalid..." + subId + " Set to 0");
@@ -492,18 +520,16 @@ public class PhoneFactory {
         return subId;
     }
 
-    //FIXME can this be removed, it is only called in getVoiceSubscription
     static public void setVoiceSubscription(int subId) {
         Settings.Global.putInt(sContext.getContentResolver(),
                 Settings.Global.MULTI_SIM_VOICE_CALL_SUBSCRIPTION, subId);
         Rlog.d(LOG_TAG, "setVoiceSubscription : " + subId);
     }
 
-    //FIXME can this be removed, it is only called in getDataSubscription
-    static public void setDataSubscription(int subId) {
+    static public void setDataSubscription(long subId) {
         boolean enabled;
 
-        Settings.Global.putInt(sContext.getContentResolver(),
+        Settings.Global.putLong(sContext.getContentResolver(),
                 Settings.Global.MULTI_SIM_DATA_CALL_SUBSCRIPTION, subId);
         Rlog.d(LOG_TAG, "setDataSubscription: " + subId);
 
@@ -522,7 +548,6 @@ public class PhoneFactory {
         Rlog.d(LOG_TAG, "set data_roaming: " + enabled);
     }
 
-    //FIXME can this be removed, it is only called in getSMSSubscription
     static public void setSMSSubscription(int subId) {
         Settings.Global.putInt(sContext.getContentResolver(),
                 Settings.Global.MULTI_SIM_SMS_SUBSCRIPTION, subId);
@@ -555,51 +580,7 @@ public class PhoneFactory {
         return phoneId;
     }
 
-    public static SubscriptionInfoUpdater getSubscriptionInfoUpdater() {
+    public static SubInfoRecordUpdater getSubInfoRecordUpdater() {
         return sSubInfoRecordUpdater;
-    }
-
-    public static void dump(FileDescriptor fd, PrintWriter pw, String[] args) {
-        pw.println("PhoneFactory:");
-        PhoneProxy [] phones = (PhoneProxy[])PhoneFactory.getPhones();
-        int i = -1;
-        for(PhoneProxy phoneProxy : phones) {
-            PhoneBase phoneBase;
-            i += 1;
-
-            try {
-                phoneBase = (PhoneBase)phoneProxy.getActivePhone();
-                phoneBase.dump(fd, pw, args);
-            } catch (Exception e) {
-                pw.println("Telephony DebugService: Could not get Phone[" + i + "] e=" + e);
-                continue;
-            }
-
-            pw.flush();
-            pw.println("++++++++++++++++++++++++++++++++");
-
-            try {
-                ((IccCardProxy)phoneProxy.getIccCard()).dump(fd, pw, args);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-            pw.flush();
-            pw.println("++++++++++++++++++++++++++++++++");
-        }
-
-        try {
-            mUiccController.dump(fd, pw, args);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        pw.flush();
-        pw.println("++++++++++++++++++++++++++++++++");
-
-        try {
-            SubscriptionController.getInstance().dump(fd, pw, args);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        pw.flush();
     }
 }
