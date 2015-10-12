@@ -821,7 +821,7 @@ public class SubscriptionController extends ISub.Stub {
                             if (DBG) {
                                 logdl("[addSubInfoRecord] one sim set defaults to subId=" + subId);
                             }
-                            if (!Arrays.asList("gee", "geehrc", "geefhd").contains(SystemProperties.get("ro.product.board"))) {
+                            if (!Arrays.asList("gee", "geehrc", "geefhd", "gvfhd").contains(SystemProperties.get("ro.product.board"))) {
                                 setDefaultDataSubId(subId);
                             }
                             setDataSubId(subId);
