@@ -109,6 +109,7 @@ public interface Phone {
     static final String REASON_NV_READY = "nvReady";
     static final String REASON_SINGLE_PDN_ARBITRATION = "SinglePdnArbitration";
     static final String REASON_DATA_SPECIFIC_DISABLED = "specificDisabled";
+    static final String REASON_SIM_NOT_READY = "simNotReady";
     static final String REASON_IWLAN_AVAILABLE = "iwlanAvailable";
 
     // Used for band mode selection methods
@@ -194,6 +195,13 @@ public interface Phone {
      * updates.
      */
     ServiceState getServiceState();
+
+    /**
+     * Get the current ServiceState. Use
+     * <code>registerForServiceStateChanged</code> to be informed of
+     * updates.
+     */
+    ServiceState getBaseServiceState();
 
     /**
      * Get the current CellLocation.
@@ -289,6 +297,13 @@ public interface Phone {
      * TODO: Revisit if we always should return at least one entry.
      */
     String[] getActiveApnTypes();
+
+    /**
+     * Check if TETHER_DUN_APN setting or config_tether_apndata includes APN that matches
+     * current operator.
+     * @return true if there is a matching DUN APN.
+     */
+    boolean hasMatchedTetherApnSetting();
 
     /**
      * Returns string for the active APN host.
@@ -898,6 +913,13 @@ public interface Phone {
     public void addParticipant(String dialString) throws CallStateException;
 
     /**
+     * Initiate to add a participant in an IMS call.
+     *
+     * @exception CallStateException operation is not supported.
+     */
+    public void addParticipant(String dialString, Message onComplete) throws CallStateException;
+
+    /**
      * Handles PIN MMI commands (PIN/PIN2/PUK/PUK2), which are initiated
      * without SEND (so <code>dial</code> is not appropriate).
      *
@@ -1198,6 +1220,15 @@ public interface Phone {
      */
     void selectNetworkManually(OperatorInfo network,
                             Message response);
+
+    /**
+     * Query the radio for the current network selection mode.
+     *
+     * Return values:
+     *     0 - automatic.
+     *     1 - manual.
+     */
+    void getNetworkSelectionMode(Message response);
 
     /**
      *  Requests to set the preferred network type for searching and registering
@@ -1525,6 +1556,11 @@ public interface Phone {
     String getImei();
 
     /**
+     * Retrieves Nai for phones. Returns null if Nai is not set.
+     */
+    String getNai();
+
+    /**
      * Retrieves the PhoneSubInfo of the Phone
      */
     public PhoneSubInfo getPhoneSubInfo();
@@ -1791,6 +1827,22 @@ public interface Phone {
     void unregisterForT53AudioControlInfo(Handler h);
 
     /**
+     * Register for radio off or not available
+     *
+     * @param h Handler that receives the notification message.
+     * @param what User-defined message code.
+     * @param obj User object.
+     */
+    public void registerForRadioOffOrNotAvailable(Handler h, int what, Object obj);
+
+    /**
+     * Unregisters for radio off or not available
+     *
+     * @param h Handler to be removed from the registrant list.
+     */
+    public void unregisterForRadioOffOrNotAvailable(Handler h);
+
+    /**
      * registers for exit emergency call back mode request response
      *
      * @param h Handler that receives the notification message.
@@ -1934,7 +1986,7 @@ public interface Phone {
     /*
      * Returns the subscription id.
      */
-    public long getSubId();
+    public int getSubId();
 
     /*
      * Returns the phone id.
@@ -1983,6 +2035,13 @@ public interface Phone {
     public boolean setOperatorBrandOverride(String brand);
 
     /**
+     * Override the roaming indicator for the current ICCID.
+     */
+    public boolean setRoamingOverride(List<String> gsmRoamingList,
+            List<String> gsmNonRoamingList, List<String> cdmaRoamingList,
+            List<String> cdmaNonRoamingList);
+
+    /**
      * Is Radio Present on the device and is it accessible
      */
     public boolean isRadioAvailable();
@@ -1998,4 +2057,11 @@ public interface Phone {
     public void setLocalCallHold(int lchStatus);
 
     public boolean isImsVtCallPresent();
+
+    /**
+     * Query the IMS Registration Status.
+     *
+     * @return true if IMS is Registered
+     */
+    public boolean isImsRegistered();
 }

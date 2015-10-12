@@ -37,10 +37,12 @@ import com.android.internal.telephony.Phone;
 import com.android.internal.telephony.PhoneBase;
 import com.android.internal.telephony.PhoneConstants;
 import com.android.internal.telephony.TelephonyProperties;
+import com.android.internal.telephony.imsphone.ImsPhoneConnection;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 
 
@@ -713,6 +715,15 @@ public final class CdmaCallTracker extends CallTracker {
             }
         }
 
+        /* Disconnect any pending Handover connections */
+        for (Iterator<Connection> it = mHandoverConnections.iterator();
+                it.hasNext();) {
+            Connection hoConnection = it.next();
+            log("handlePollCalls - disconnect hoConn= " + hoConnection);
+            ((ImsPhoneConnection)hoConnection).onDisconnect(DisconnectCause.NOT_VALID);
+            it.remove();
+        }
+
         // Any non-local disconnects: determine cause
         if (mDroppedDuringPoll.size() > 0) {
             mCi.getLastCallFailCause(
@@ -1198,5 +1209,9 @@ public final class CdmaCallTracker extends CallTracker {
         pw.println(" mPendingCallClirMode=" + mPendingCallClirMode);
         pw.println(" mState=" + mState);
         pw.println(" mIsEcmTimerCanceled=" + mIsEcmTimerCanceled);
+    }
+    @Override
+    public PhoneConstants.State getState() {
+        return mState;
     }
 }

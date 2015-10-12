@@ -39,10 +39,11 @@ import android.os.Handler;
 import android.os.Message;
 import android.os.Registrant;
 import android.os.RegistrantList;
+import android.os.SystemProperties;
 import android.provider.Settings.SettingNotFoundException;
 import android.telephony.Rlog;
 import android.telephony.SubscriptionManager;
-import android.telephony.SubInfoRecord;
+import android.telephony.SubscriptionInfo;
 import android.telephony.TelephonyManager;
 
 import com.android.internal.telephony.CommandException;
@@ -50,7 +51,6 @@ import com.android.internal.telephony.CommandsInterface;
 import com.android.internal.telephony.Phone;
 import com.android.internal.telephony.PhoneConstants;
 import com.android.internal.telephony.RILConstants;
-import com.android.internal.telephony.Subscription.SubscriptionStatus;
 import com.android.internal.telephony.SubscriptionController;
 import com.android.internal.telephony.TelephonyIntents;
 import com.android.internal.telephony.RIL;
@@ -111,6 +111,17 @@ public class ModemStackController extends Handler {
                 + mMaxDataCap +"]";
         }
     };
+
+    /**
+     * Subscription activation status
+     */
+    public enum SubscriptionStatus {
+        SUB_DEACTIVATE,
+            SUB_ACTIVATE,
+            SUB_ACTIVATED,
+            SUB_DEACTIVATED,
+            SUB_INVALID
+    }
 
     //***** Events
     private static final int CMD_DEACTIVATE_ALL_SUBS = 1;
@@ -181,8 +192,8 @@ public class ModemStackController extends Handler {
                     mIsPhoneInEcbmMode = false;
                 }
             } else if (TelephonyIntents.ACTION_SUBINFO_CONTENT_CHANGE.equals(intent.getAction())) {
-                long subId = intent.getLongExtra(SubscriptionManager._ID,
-                        SubscriptionManager.INVALID_SUB_ID);
+                int subId = intent.getIntExtra(SubscriptionManager.UNIQUE_KEY_SUBSCRIPTION_ID,
+                        SubscriptionManager.INVALID_SUBSCRIPTION_ID);
                 String column = intent.getStringExtra(TelephonyIntents.EXTRA_COLUMN_NAME);
                 int intValue = intent.getIntExtra(TelephonyIntents.EXTRA_INT_CONTENT, 0);
                 logd("Received ACTION_SUBINFO_CONTENT_CHANGE on subId: " + subId
@@ -202,8 +213,8 @@ public class ModemStackController extends Handler {
                 }
             } else if (TelephonyIntents.ACTION_SUBSCRIPTION_SET_UICC_RESULT.
                     equals(intent.getAction())) {
-                long subId = intent.getLongExtra(PhoneConstants.SUBSCRIPTION_KEY,
-                        SubscriptionManager.INVALID_SUB_ID);
+                int subId = intent.getIntExtra(PhoneConstants.SUBSCRIPTION_KEY,
+                        SubscriptionManager.INVALID_SUBSCRIPTION_ID);
                 int phoneId = intent.getIntExtra(PhoneConstants.PHONE_KEY,
                         PhoneConstants.PHONE_ID1);
                 int status = intent.getIntExtra(TelephonyIntents.EXTRA_RESULT,
@@ -368,7 +379,8 @@ public class ModemStackController extends Handler {
             loge("onGetModemCapabilityDone: EXIT!, result null or Exception =" + ar.exception);
             //On Modem Packages which do not support GetModemCaps RIl will return exception
             //On such Modem packages notify stack is ready so that SUB Activation can continue.
-            notifyStackReady(false);
+            mIsStackReady = true;
+            mStackReadyRegistrants.notifyRegistrants();
             return;
         }
 
@@ -428,7 +440,9 @@ public class ModemStackController extends Handler {
             //if any deact failed notify registrants to activate any deactivated subs
             //and stop binding process. No need to recover here.
             if (isAnyCmdFailed()) {
-                notifyStackReady(false);
+                mIsRecoveryInProgress = false;
+                mIsStackReady = true;
+                mStackReadyRegistrants.notifyRegistrants();
             } else {
                 mDeactivationInProgress = false;
                 triggerUnBindingOnAllSubs();
@@ -504,7 +518,7 @@ public class ModemStackController extends Handler {
                 mUpdateStackMsg = null;
             }
             updateNetworkSelectionMode();
-            notifyStackReady(true);
+            notifyStackReady();
         }
     }
 
@@ -680,6 +694,8 @@ public class ModemStackController extends Handler {
             loge("No need to update Stack Binding in case of Single Sim.");
             return FAILURE;
         }
+        boolean isFlexmapDisabled = (SystemProperties.getInt(
+                "persist.radio.disable_flexmap", 0) == 1);
 
         if (callInProgress || mIsPhoneInEcbmMode || (!mIsStackReady && !isBootUp)) {
             loge("updateStackBinding: Calls is progress = " + callInProgress +
@@ -699,7 +715,7 @@ public class ModemStackController extends Handler {
             }
         }
 
-        if (isUpdateRequired) {
+        if (!isFlexmapDisabled && isUpdateRequired) {
             mIsStackReady = false;
             //Store the msg object , so that result of updateStackbinding can be sent later.
             mUpdateStackMsg = msg;
@@ -711,8 +727,9 @@ public class ModemStackController extends Handler {
                 triggerDeactivationOnAllSubs();
             }
         } else {
+            loge("updateStackBinding: FlexMap Disabled : " + isFlexmapDisabled);
             //incase of bootup if cross binding is not required send stack ready notification.
-            if (isBootUp) notifyStackReady(false);
+            if (isBootUp) notifyStackReady();
             return FAILURE;
         }
         return SUCCESS;
@@ -720,20 +737,20 @@ public class ModemStackController extends Handler {
 
     private void deactivateAllSubscriptions() {
         SubscriptionController subCtrlr = SubscriptionController.getInstance();
-        List<SubInfoRecord> subInfoList = subCtrlr.getActiveSubInfoList();
+        List<SubscriptionInfo> subInfoList = subCtrlr.getActiveSubscriptionInfoList();
         mActiveSubCount = 0;
         if (subInfoList == null) {
             //if getting sub info list is failed, abort cross mapping process.
-            notifyStackReady(false);
+            notifyStackReady();
             return;
         }
-        for (SubInfoRecord subInfo : subInfoList) {
-            int subStatus = subCtrlr.getSubState(subInfo.subId);
+        for (SubscriptionInfo subInfo : subInfoList) {
+            int subStatus = subCtrlr.getSubState(subInfo.getSubscriptionId());
             if (subStatus == SubscriptionManager.ACTIVE) {
                 mActiveSubCount++;
-                subCtrlr.deactivateSubId(subInfo.subId);
+                subCtrlr.deactivateSubId(subInfo.getSubscriptionId());
             }
-            mSubcriptionStatus.put(subInfo.slotId, subStatus);
+            mSubcriptionStatus.put(subInfo.getSimSlotIndex(), subStatus);
         }
         if (mActiveSubCount > 0) {
             mDeactivedSubCount = 0;
@@ -744,18 +761,17 @@ public class ModemStackController extends Handler {
         }
     }
 
-    private void notifyStackReady(boolean isCrossMapDone) {
+    private void notifyStackReady() {
         logd("notifyStackReady: Stack is READY!!!");
         mIsRecoveryInProgress = false;
         mIsStackReady = true;
         resetSubStates();
 
-        if (isCrossMapDone) {
-            for (int i = 0; i < mNumPhones; i++) {
-                //update the current stackIds
-                mCurrentStackId[i] = mPreferredStackId[i];
-            }
+        for (int i = 0; i < mNumPhones; i++) {
+            //update the current stackIds
+            mCurrentStackId[i] = mPreferredStackId[i];
         }
+
         //notify binding completed to all StackReady registrants.
         //including subscriptionManager which activates available subs on binding complete.
         mStackReadyRegistrants.notifyRegistrants();
@@ -812,7 +828,7 @@ public class ModemStackController extends Handler {
             if(STATE_SET_PREF_MODE == mSubState[0]) {
                 //Already recovery in progress, got failure in SetPrefNwmode. We are bailing out.
                 //As Set Pref is failed, Binding is completed. so update and notify same.
-                notifyStackReady(true);
+                notifyStackReady();
             }
             return;
         }

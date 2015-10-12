@@ -1,7 +1,6 @@
 /*
- * Copyright (c) 2014, Linux Foundation. All rights reserved.
- * Not a Contribution, Apache license notifications and license are retained
- * for attribution purposes only.
+ * Copyright (c) 2014-2015, Linux Foundation. All rights reserved.
+ * Not a Contribution.
  *
  * Copyright (C) 2006 The Android Open Source Project
  *
@@ -62,8 +61,6 @@ public class SIMRecords extends IccRecords {
     VoiceMailConstants mVmConfig;
 
 
-    SpnOverride mSpnOverride;
-
     // ***** Cached SIM State; cleared on channel close
 
     private boolean mCallForwardingEnabled;
@@ -102,7 +99,6 @@ public class SIMRecords extends IccRecords {
     public String toString() {
         return "SimRecords: " + super.toString()
                 + " mVmConfig" + mVmConfig
-                + " mSpnOverride=" + "mSpnOverride"
                 + " callForwardingEnabled=" + mCallForwardingEnabled
                 + " spnState=" + mSpnState
                 + " mCphsInfo=" + mCphsInfo
@@ -201,7 +197,6 @@ public class SIMRecords extends IccRecords {
         mAdnCache = new AdnRecordCache(mFh);
 
         mVmConfig = new VoiceMailConstants();
-        mSpnOverride = new SpnOverride();
 
         mRecordsRequested = false;  // No load request is made till SIM ready
 
@@ -323,12 +318,15 @@ public class SIMRecords extends IccRecords {
     public void setMsisdnNumber(String alphaTag, String number,
             Message onComplete) {
 
-        mMsisdn = number;
-        mMsisdnTag = alphaTag;
+        // If the SIM card is locked by PIN, we will set EF_MSISDN fail.
+        // In that case, msisdn and msisdnTag should not be update.
+        mNewMsisdn = number;
+        mNewMsisdnTag = alphaTag;
 
-        if(DBG) log("Set MSISDN: " + mMsisdnTag + " " + /*mMsisdn*/ "xxxxxxx");
+        if(DBG) log("Set MSISDN: " + mNewMsisdnTag + " " + /*mNewMsisdn*/ "xxxxxxx");
 
-        AdnRecord adn = new AdnRecord(mMsisdnTag, mMsisdn);
+
+        AdnRecord adn = new AdnRecord(mNewMsisdnTag, mNewMsisdn);
 
         new AdnRecordLoader(mFh).updateEF(adn, EF_MSISDN, getExtFromEf(EF_MSISDN), 1, null,
                 obtainMessage(EVENT_SET_MSISDN_DONE, onComplete));
@@ -466,7 +464,7 @@ public class SIMRecords extends IccRecords {
 
     public int getVoiceMessageCount() {
         boolean voiceMailWaiting = false;
-        int countVoiceMessages = -1;
+        int countVoiceMessages = DEFAULT_VOICE_MESSAGE_COUNT;
         if (mEfMWIS != null) {
             // Use this data if the EF[MWIS] exists and
             // has been loaded
@@ -476,7 +474,7 @@ public class SIMRecords extends IccRecords {
 
             if (voiceMailWaiting && countVoiceMessages == 0) {
                 // Unknown count = -1
-                countVoiceMessages = -1;
+                countVoiceMessages = UNKNOWN_VOICE_MESSAGE_COUNT;
             }
             if(DBG) log(" VoiceMessageCount from SIM MWIS = " + countVoiceMessages);
         } else if (mEfCPHS_MWI != null) {
@@ -486,7 +484,7 @@ public class SIMRecords extends IccRecords {
             // Refer CPHS4_2.WW6 B4.2.3
             if (indicator == 0xA) {
                 // Unknown count = -1
-                countVoiceMessages = -1;
+                countVoiceMessages = UNKNOWN_VOICE_MESSAGE_COUNT;
             } else if (indicator == 0x5) {
                 countVoiceMessages = 0;
             }
@@ -697,7 +695,12 @@ public class SIMRecords extends IccRecords {
                     MccTable.updateMccMncConfiguration(mContext,
                             mImsi.substring(0, 3 + mMncLength), false);
                 }
-                mImsiReadyRegistrants.notifyRegistrants();
+                if (isAppStateReady()) {
+                    mImsiReadyRegistrants.notifyRegistrants();
+                } else {
+                    log("EVENT_GET_IMSI_DONE:" +
+                            "App state is not ready; not notifying the registrants");
+                }
             break;
 
             case EVENT_GET_MBI_DONE:
@@ -813,6 +816,12 @@ public class SIMRecords extends IccRecords {
             case EVENT_SET_MSISDN_DONE:
                 isRecordLoadResponse = false;
                 ar = (AsyncResult)msg.obj;
+
+                if (ar.exception == null) {
+                    mMsisdn = mNewMsisdn;
+                    mMsisdnTag = mNewMsisdnTag;
+                    log("Success to update EF[MSISDN]");
+                }
 
                 if (ar.userObj != null) {
                     AsyncResult.forMessage(((Message) ar.userObj)).exception
@@ -1480,19 +1489,15 @@ public class SIMRecords extends IccRecords {
         setVoiceMailByCountry(operator);
         setSpnFromConfig(operator);
 
-        mRecordsLoadedRegistrants.notifyRegistrants(
-            new AsyncResult(null, null, null));
-    }
-
-    //***** Private methods
-
-    private void setSpnFromConfig(String carrier) {
-        if (mSpnOverride.containsCarrier(carrier)) {
-            setServiceProviderName(mSpnOverride.getSpn(carrier));
-            SystemProperties.set(PROPERTY_ICC_OPERATOR_ALPHA, getServiceProviderName());
+        if (isAppStateReady()) {
+            mRecordsLoadedRegistrants.notifyRegistrants(
+                    new AsyncResult(null, null, null));
+        } else {
+            log("onAllRecordsLoaded: AppState is not ready; not notifying the registrants");
         }
     }
 
+    //***** Private methods
 
     private void setVoiceMailByCountry (String spn) {
         if (mVmConfig.containsCarrier(spn)) {
@@ -1513,6 +1518,12 @@ public class SIMRecords extends IccRecords {
     }
 
     private void loadEfLiAndEfPl() {
+        Resources resource = Resources.getSystem();
+        if (!resource.getBoolean(com.android.internal.R.bool.config_use_sim_language_file)) {
+            if (DBG) log ("Not using EF LI/EF PL");
+            return;
+        }
+
         if (mParentApp.getType() == AppType.APPTYPE_USIM) {
             mRecordsRequested = true;
             mFh.loadEFTransparent(EF_LI,
@@ -1705,6 +1716,7 @@ public class SIMRecords extends IccRecords {
      */
     private void getSpnFsm(boolean start, AsyncResult ar) {
         byte[] data;
+        boolean foundSpn = false;
 
         if (start) {
             // Check previous state to see if there is outstanding
@@ -1742,9 +1754,13 @@ public class SIMRecords extends IccRecords {
                     if (DBG) log("Load EF_SPN: " + getServiceProviderName()
                             + " spnDisplayCondition: " + mSpnDisplayCondition);
                     setSystemProperty(PROPERTY_ICC_OPERATOR_ALPHA, getServiceProviderName());
+                    if (!TextUtils.isEmpty(getServiceProviderName())) {
+                        foundSpn = true;
+                    }
 
                     mSpnState = GetSpnFsmState.IDLE;
-                } else {
+                }
+                if (!foundSpn) {
                     mFh.loadEFTransparent( EF_SPN_CPHS,
                             obtainMessage(EVENT_GET_SPN_DONE));
                     mRecordsToLoad++;
@@ -1764,8 +1780,13 @@ public class SIMRecords extends IccRecords {
                     if (DBG) log("Load EF_SPN_CPHS: " + getServiceProviderName());
                     setSystemProperty(PROPERTY_ICC_OPERATOR_ALPHA, getServiceProviderName());
 
+                    if (!TextUtils.isEmpty(getServiceProviderName())) {
+                        foundSpn = true;
+                    }
+
                     mSpnState = GetSpnFsmState.IDLE;
-                } else {
+                }
+                if (!foundSpn) {
                     mFh.loadEFTransparent(
                             EF_SPN_SHORT_CPHS, obtainMessage(EVENT_GET_SPN_DONE));
                     mRecordsToLoad++;
@@ -1780,9 +1801,16 @@ public class SIMRecords extends IccRecords {
 
                     if (DBG) log("Load EF_SPN_SHORT_CPHS: " + getServiceProviderName());
                     setSystemProperty(PROPERTY_ICC_OPERATOR_ALPHA, getServiceProviderName());
-                }else {
+
+                    if (!TextUtils.isEmpty(getServiceProviderName())) {
+                        foundSpn = true;
+                    }
+
+                }
+
+                if (!foundSpn) {
                     if (DBG) log("No SPN loaded in either CHPS or 3GPP");
-                    if (mPnnHomeName != null && mSpn == null) {
+                    if (mPnnHomeName != null && (mSpn == null || TextUtils.isEmpty(mSpn))) {
                         if (DBG) log("Falling back to home network name for SPN");
                         mSpn = mPnnHomeName;
                         setSystemProperty(PROPERTY_ICC_OPERATOR_ALPHA, mSpn);
@@ -1920,7 +1948,6 @@ public class SIMRecords extends IccRecords {
         pw.println(" extends:");
         super.dump(fd, pw, args);
         pw.println(" mVmConfig=" + mVmConfig);
-        pw.println(" mSpnOverride=" + mSpnOverride);
         pw.println(" mCallForwardingEnabled=" + mCallForwardingEnabled);
         pw.println(" mSpnState=" + mSpnState);
         pw.println(" mCphsInfo=" + mCphsInfo);
@@ -1936,5 +1963,4 @@ public class SIMRecords extends IccRecords {
         pw.println(" mGid1=" + mGid1);
         pw.flush();
     }
-
 }
